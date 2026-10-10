@@ -8,13 +8,22 @@ import { MoveHistory } from './components/MoveHistory';
 import { GameControls } from './components/GameControls';
 import { PgnModal } from './components/PgnModal';
 import { SettingsModal } from './components/SettingsModal';
+import { ProgressiveCoachWidget } from './components/ProgressiveCoachWidget';
+import { SimulationToolbar } from './components/SimulationToolbar';
 import { useChessGame } from './hooks/useChessGame';
+import { useProgressiveCoach } from './hooks/useProgressiveCoach';
 import { SystemStatus } from './types/chess';
 import { Bot, User, Sparkles, CheckCircle2, AlertCircle, Zap, RotateCcw, Trophy, Crown } from 'lucide-react';
 import appLogo from './assets/logo.png';
 
 export const App: React.FC = () => {
   const game = useChessGame();
+  const progressiveCoach = useProgressiveCoach({
+    fen: game.fen,
+    playerColor: game.actualPlayerColor,
+    isPlayerTurn: game.isPlayerTurn,
+    isGameOver: game.gameOverState.isGameOver,
+  });
   const [isPgnModalOpen, setIsPgnModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [systemStatus, setSystemStatus] = useState<SystemStatus | null>(null);
@@ -55,14 +64,19 @@ export const App: React.FC = () => {
   const isOllamaOnline = Boolean(systemStatus?.ollama?.online);
   const activeModel = systemStatus?.ollama?.selectedModel || 'deepseek-r1';
   const gpuName = systemStatus?.gpu?.name;
-  const vramGb = systemStatus?.gpu?.totalVramGb;
+  const totalVramGb = systemStatus?.gpu?.totalVramGb;
+  const isLinux = typeof window !== 'undefined' && window.chessAPI?.platform === 'linux';
   const botDisplayName =
-    game.botLevel === 'stockfish' ? 'Stockfish (Maître)' : `Maia Chess (${game.botLevel})`;
+    game.botLevel === 'stockfish'
+      ? 'Stockfish (Maître)'
+      : isLinux
+      ? `Stockfish (${game.botLevel})`
+      : `Maia Chess (${game.botLevel})`;
 
   return (
     <div className="flex flex-col h-screen w-screen bg-zinc-950 text-zinc-100 select-none overflow-hidden">
       {/* Barre supérieure moderne */}
-      <header className="h-14 border-b border-zinc-800/80 bg-zinc-900/60 backdrop-blur-md px-6 flex items-center justify-between z-10 shrink-0">
+      <header className="h-14 border-b border-zinc-800/80 bg-zinc-900/60 backdrop-blur-md px-4 sm:px-6 flex items-center justify-between z-40 shrink-0">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-lg flex items-center justify-center shadow-md overflow-hidden bg-zinc-900 border border-zinc-800">
             <img src={appLogo} alt="Mon Coach Échecs" className="w-full h-full object-contain p-0.5" />
@@ -81,11 +95,32 @@ export const App: React.FC = () => {
 
         {/* Badges de statut matériel & IA */}
         <div className="flex items-center gap-3">
-          {vramGb && vramGb > 0 ? (
+          {/* Module Coach Décisionnel Progressif (Angle supérieur droit) */}
+          <ProgressiveCoachWidget
+            enabled={progressiveCoach.enabled}
+            currentLevel={progressiveCoach.currentLevel}
+            status={progressiveCoach.status}
+            issueType={progressiveCoach.issueType}
+            issueDelta={progressiveCoach.issueDelta}
+            issueLabelFr={progressiveCoach.issueLabelFr}
+            targetPiece={progressiveCoach.targetPiece}
+            targetDescriptionFr={progressiveCoach.targetDescriptionFr}
+            hasSimulationMoves={progressiveCoach.simulationMoves.length > 0}
+            isLoading={progressiveCoach.isLoading}
+            simulationActive={progressiveCoach.simulationActive}
+            onToggleEnabled={progressiveCoach.toggleEnabled}
+            onAdvanceLevel={progressiveCoach.advanceLevel}
+            onSetLevel={progressiveCoach.setCurrentLevel}
+            onStartSimulation={progressiveCoach.startSimulation}
+          />
+
+          <div className="w-px h-5 bg-zinc-800 hidden sm:block" />
+
+          {totalVramGb && totalVramGb > 0 ? (
             <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-zinc-900 border border-zinc-800 text-[11px] text-zinc-300">
               <Zap className="w-3.5 h-3.5 text-amber-400" />
               <span>{gpuName ? gpuName.replace('NVIDIA GeForce ', '') : 'GPU'}</span>
-              <span className="text-indigo-400 font-bold">({vramGb} Go)</span>
+              <span className="text-indigo-400 font-bold">({totalVramGb} Go)</span>
             </div>
           ) : null}
 
@@ -174,6 +209,21 @@ export const App: React.FC = () => {
             onReopen={game.showGameOver}
           />
 
+          {/* Bandeau & Contrôles du Ghost Board (Simulation Palier 4) */}
+          <SimulationToolbar
+            active={progressiveCoach.simulationActive}
+            stepIndex={progressiveCoach.simulationStepIndex}
+            totalSteps={progressiveCoach.simulationMoves.length}
+            currentMove={
+              progressiveCoach.simulationStepIndex >= 0
+                ? progressiveCoach.simulationMoves[progressiveCoach.simulationStepIndex]
+                : undefined
+            }
+            playerColor={game.actualPlayerColor}
+            onExit={progressiveCoach.exitSimulation}
+            onStep={progressiveCoach.stepSimulation}
+          />
+
           {/* Conteneur Échiquier + Eval Bar */}
           <div className="flex items-center justify-center gap-3 w-full h-[min(600px,calc(100vh-210px))] min-h-[340px]">
             <EvalBar
@@ -181,20 +231,36 @@ export const App: React.FC = () => {
               numericScore={game.evalResult.numericScore}
               orientation={game.boardOrientation}
             />
-            <div className="flex-1 h-full max-w-[min(600px,calc(100vh-210px))] flex items-center justify-center">
+            <div
+              className={`flex-1 h-full max-w-[min(600px,calc(100vh-210px))] flex items-center justify-center transition-all ${
+                progressiveCoach.simulationActive
+                  ? 'ring-2 ring-indigo-500/50 rounded-2xl shadow-indigo-500/10'
+                  : ''
+              }`}
+            >
               <Chessboard
-                fen={game.fen}
+                fen={progressiveCoach.displayFen}
                 orientation={game.boardOrientation}
                 turnColor={game.turnColor}
-                dests={game.dests}
-                isInteractive={game.isPlayerTurn && !game.gameOverState.isGameOver}
-                shapes={game.shapes}
+                dests={progressiveCoach.simulationActive ? new Map() : game.dests}
+                isInteractive={
+                  !progressiveCoach.simulationActive &&
+                  game.isPlayerTurn &&
+                  !game.gameOverState.isGameOver
+                }
+                shapes={
+                  progressiveCoach.simulationActive
+                    ? progressiveCoach.simulationShapes
+                    : game.shapes
+                }
                 lastMove={
-                  game.history.length > 0
+                  progressiveCoach.simulationActive
+                    ? undefined
+                    : game.history.length > 0
                     ? [game.history[game.history.length - 1].from, game.history[game.history.length - 1].to]
                     : undefined
                 }
-                onMove={game.handleHumanMove}
+                onMove={progressiveCoach.simulationActive ? () => {} : game.handleHumanMove}
               />
             </div>
           </div>

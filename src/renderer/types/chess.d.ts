@@ -94,7 +94,53 @@ export interface SystemStatus {
   };
 }
 
+export interface ProgressiveCoachMove {
+  uci: string;
+  san: string;
+  fen: string;
+  from: string;
+  to: string;
+  color: 'w' | 'b';
+}
+
+export interface TargetPieceInfo {
+  type: string;
+  square: string;
+  nameFr: string;
+}
+
+export interface ProgressiveCoachResult {
+  status: 'ATTACK' | 'DEFENSE';
+  evalRefCp: number;
+  evalNullCp: number;
+  deltaCp: number;
+  issueType: 'MATE' | 'MATERIAL' | 'POSITION';
+  issueDelta: number;
+  issueLabelFr: string;
+  targetPiece: TargetPieceInfo | null;
+  targetDescriptionFr: string;
+  simulationMoves: ProgressiveCoachMove[];
+}
+
+export interface ProgressiveCoachState {
+  enabled: boolean;
+  currentLevel: 0 | 1 | 2 | 3;
+  status: 'ATTACK' | 'DEFENSE';
+  issueType: 'MATE' | 'MATERIAL' | 'POSITION';
+  issueDelta: number;
+  issueLabelFr: string;
+  targetPiece: TargetPieceInfo | null;
+  targetDescriptionFr: string;
+  simulation: {
+    active: boolean;
+    stepIndex: number;
+    moves: ProgressiveCoachMove[];
+  };
+  isLoading: boolean;
+}
+
 export interface ChessAPI {
+  platform: string;
   setBotLevel(level: BotLevel): Promise<{ success: boolean }>;
   getBotMove(fen: string): Promise<string>;
   evaluatePosition(fen: string, depth?: number): Promise<EvalResult>;
@@ -102,6 +148,7 @@ export interface ChessAPI {
   getSystemStatus(): Promise<SystemStatus>;
   setOllamaModel(model: string): Promise<{ success: boolean }>;
   exportPgnFile(pgn: string, defaultName?: string): Promise<{ success: boolean; filePath?: string }>;
+  getProgressiveCoachData(fen: string, playerColor: 'white' | 'black'): Promise<ProgressiveCoachResult>;
 }
 
 declare global {

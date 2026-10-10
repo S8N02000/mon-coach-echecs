@@ -41,20 +41,33 @@ export const GameControls: React.FC<GameControlsProps> = ({
   onOpenPgnModal,
   onOpenSettingsModal,
 }) => {
+  const isLinux = typeof window !== 'undefined' && window.chessAPI?.platform === 'linux';
+
   return (
     <div className="w-full bg-zinc-900/90 border border-zinc-800 rounded-2xl p-4 shadow-xl flex flex-col gap-3.5">
       {/* Sélecteur de niveau du Bot */}
       <div>
-        <label className="text-zinc-400 text-xs font-medium block mb-1.5">
-          Adversaire Virtuel
+        <label className="text-zinc-400 text-xs font-medium block mb-1.5 flex items-center justify-between">
+          <span>Adversaire Virtuel</span>
+          {isLinux && (
+            <span className="text-[10px] text-emerald-400 font-mono">Stockfish 19 (Linux)</span>
+          )}
         </label>
         <div className="grid grid-cols-2 gap-1.5">
-          {[
-            { id: '1100', label: 'Maia 1100', sub: 'Débutant' },
-            { id: '1300', label: 'Maia 1300', sub: 'Amateur' },
-            { id: '1500', label: 'Maia 1500', sub: 'Intermédiaire' },
-            { id: 'stockfish', label: 'Stockfish', sub: 'Maître' },
-          ].map((lvl) => (
+          {(isLinux
+            ? [
+                { id: '1100', label: 'Stockfish Débutant', sub: 'Niveau ~1100' },
+                { id: '1300', label: 'Stockfish Amateur', sub: 'Niveau ~1300' },
+                { id: '1500', label: 'Stockfish Intermédiaire', sub: 'Niveau ~1500' },
+                { id: 'stockfish', label: 'Stockfish Maître', sub: 'Niveau Max' },
+              ]
+            : [
+                { id: '1100', label: 'Maia 1100', sub: 'Débutant' },
+                { id: '1300', label: 'Maia 1300', sub: 'Amateur' },
+                { id: '1500', label: 'Maia 1500', sub: 'Intermédiaire' },
+                { id: 'stockfish', label: 'Stockfish', sub: 'Maître' },
+              ]
+          ).map((lvl) => (
             <button
               key={lvl.id}
               onClick={() => onSetBotLevel(lvl.id as BotLevel)}

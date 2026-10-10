@@ -2,6 +2,8 @@ import { contextBridge, ipcRenderer } from 'electron';
 import { BotLevel, CoachPayload, CoachResponse, EvalResult, SystemStatus } from '../renderer/types/chess';
 
 const chessAPI = {
+  platform: process.platform,
+
   setBotLevel: (level: BotLevel): Promise<{ success: boolean }> => {
     return ipcRenderer.invoke('chess:set-bot-level', level);
   },
@@ -28,6 +30,10 @@ const chessAPI = {
 
   exportPgnFile: (pgn: string, defaultName?: string): Promise<{ success: boolean; filePath?: string }> => {
     return ipcRenderer.invoke('chess:export-pgn', pgn, defaultName);
+  },
+
+  getProgressiveCoachData: (fen: string, playerColor: 'white' | 'black') => {
+    return ipcRenderer.invoke('chess:get-progressive-coach-data', fen, playerColor);
   },
 };
 

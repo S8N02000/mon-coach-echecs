@@ -5,13 +5,16 @@ import { StockfishService } from './uci/stockfish-service';
 import { MaiaService } from './uci/maia-service';
 import { OllamaService } from './ai/ollama-service';
 import { PromptBuilder } from './ai/prompt-builder';
+import { ProgressiveCoachService } from './coach/progressive-coach-service';
 import { BotLevel, CoachPayload, CoachResponse, TacticalStep } from '../renderer/types/chess';
 import { getPreloadPath, getDistHtmlPath, getAppIconPath } from './utils/paths';
 
 let mainWindow: BrowserWindow | null = null;
-const stockfishService = new StockfishService();
-const maiaService = new MaiaService(stockfishService);
+const stockfishService = new StockfishService('Stockfish-Analysis');
+const botEngineService = new StockfishService('Stockfish-Bot');
+const maiaService = new MaiaService(botEngineService);
 const ollamaService = new OllamaService();
+const progressiveCoachService = new ProgressiveCoachService(stockfishService);
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -55,6 +58,10 @@ ipcMain.handle('chess:get-bot-move', async (_, fen: string) => {
 
 ipcMain.handle('chess:evaluate-position', async (_, fen: string, depth?: number) => {
   return await stockfishService.evaluate(fen, depth || 10);
+});
+
+ipcMain.handle('chess:get-progressive-coach-data', async (_, fen: string, playerColor: 'white' | 'black') => {
+  return await progressiveCoachService.analyze(fen, playerColor);
 });
 
 ipcMain.handle('chess:ask-coach', async (_, payload: CoachPayload): Promise<CoachResponse> => {
@@ -158,7 +165,9 @@ app.whenReady().then(async () => {
   
   ollamaService.ensureOllamaRunning().catch((e) => console.warn('Ollama check:', e));
   stockfishService.init().catch((e) => console.warn('Stockfish init:', e));
-  maiaService.setLevel('1100').catch((e) => console.warn('Maia init:', e));
+  botEngineService.init().catch((e) => console.warn('Bot engine init:', e));
+  const initialBotLevel = process.platform === 'linux' ? 'stockfish' : '1100';
+  maiaService.setLevel(initialBotLevel).catch((e) => console.warn('Maia init:', e));
 
   createWindow();
 
@@ -173,6 +182,7 @@ app.on('before-quit', async () => {
   console.log('[Main] Fermeture de l\'application : nettoyage des processus UCI et VRAM...');
   await Promise.all([
     stockfishService.stop().catch(() => {}),
+    botEngineService.stop().catch(() => {}),
     maiaService.stop().catch(() => {}),
   ]);
 
