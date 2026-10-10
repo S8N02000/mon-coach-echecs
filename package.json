@@ -8,13 +8,16 @@
     "build": "tsc && vite build",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
     "setup:engines": "node scripts/setup-engines.mjs",
     "package:win": "tsc && vite build && electron-builder --win zip",
     "package:win:installer": "tsc && vite build && electron-builder --win nsis",
-    "package:linux": "tsc && vite build && electron-builder --linux",
     "package:win:zip": "tsc && vite build && electron-builder --win zip",
     "package:win:dir": "tsc && vite build && electron-builder --win --dir",
-    "package:linux:dir": "tsc && vite build && electron-builder --linux --dir"
+    "package:linux": "tsc && vite build && electron-builder --linux",
+    "package:linux:dir": "tsc && vite build && electron-builder --linux --dir",
+    "package:mac": "tsc && vite build && electron-builder --mac",
+    "package:mac:dir": "tsc && vite build && electron-builder --mac --dir"
   },
   "keywords": [
     "chess",

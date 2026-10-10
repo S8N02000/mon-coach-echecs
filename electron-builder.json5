@@ -44,5 +44,10 @@
     "icon": "build/icons",
     "target": ["AppImage"],
     "category": "Game"
+  },
+  "mac": {
+    "icon": "build/icon.png",
+    "target": ["dmg", "zip"],
+    "category": "public.app-category.board-games"
   }
 }
