@@ -71,3 +71,57 @@ export function parseUciOutput(lines: string[], targetDepth: number, fen?: strin
     depth: actualDepth,
   };
 }
+
+export interface RawUciEval {
+  cpScore: number | null;
+  mateScore: number | null;
+  pv: string;
+  bestMove: string;
+  depth: number;
+}
+
+export function parseRawUciOutput(lines: string[]): RawUciEval {
+  let bestMove = '';
+  let pv = '';
+  let cpScore: number | null = null;
+  let mateScore: number | null = null;
+  let actualDepth = 0;
+
+  for (const line of lines) {
+    if (line.startsWith('bestmove')) {
+      const parts = line.split(' ');
+      const rawMove = parts[1] || '';
+      bestMove = rawMove === '(none)' ? '' : rawMove;
+    } else if (line.startsWith('info') && line.includes('score')) {
+      const depthMatch = line.match(/depth\s+(\d+)/);
+      if (depthMatch) {
+        actualDepth = parseInt(depthMatch[1], 10);
+      }
+
+      const cpMatch = line.match(/score\s+cp\s+(-?\d+)/);
+      if (cpMatch) {
+        cpScore = parseInt(cpMatch[1], 10);
+        mateScore = null;
+      }
+
+      const mateMatch = line.match(/score\s+mate\s+(-?\d+)/);
+      if (mateMatch) {
+        mateScore = parseInt(mateMatch[1], 10);
+        cpScore = null;
+      }
+
+      const pvMatch = line.match(/\spv\s+(.+)$/);
+      if (pvMatch) {
+        pv = pvMatch[1].trim();
+      }
+    }
+  }
+
+  return {
+    cpScore,
+    mateScore,
+    pv,
+    bestMove,
+    depth: actualDepth,
+  };
+}

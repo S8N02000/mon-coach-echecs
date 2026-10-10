@@ -2,14 +2,17 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { UciProcess } from './uci-process';
 import { EvalResult } from '../../renderer/types/chess';
-import { parseUciOutput } from './uci-parser';
+import { parseUciOutput, parseRawUciOutput, RawUciEval } from './uci-parser';
 import { getResourcesBinDir } from '../utils/paths';
 
 export class StockfishService {
   private uci: UciProcess | null = null;
   private binaryPath: string | null = null;
+  private name: string;
+  private queueMutex: Promise<any> = Promise.resolve();
 
-  constructor() {
+  constructor(name: string = 'Stockfish') {
+    this.name = name;
     this.binaryPath = this.findBinaryPath();
   }
 
@@ -38,37 +41,59 @@ export class StockfishService {
       this.binaryPath = this.findBinaryPath();
     }
     if (!this.binaryPath) {
-      console.warn('[StockfishService] Binary not found.');
+      console.warn(`[${this.name}] Binary not found.`);
       return false;
     }
 
     try {
       this.uci = new UciProcess({
         binaryPath: this.binaryPath,
-        name: 'Stockfish',
+        name: this.name,
         timeoutMs: 8000,
       });
       await this.uci.start();
-      console.log('[StockfishService] Stockfish initialized successfully with binary:', this.binaryPath);
+      console.log(`[${this.name}] Initialized successfully with binary:`, this.binaryPath);
       return true;
     } catch (err) {
-      console.error('[StockfishService] Initialization error:', err);
+      console.error(`[${this.name}] Initialization error:`, err);
       return false;
     }
   }
 
-  public async evaluate(fen: string, depth: number = 10): Promise<EvalResult> {
-    if (!this.uci || !this.uci.getReadyStatus()) {
-      const initialized = await this.init();
-      if (!initialized || !this.uci) {
-        throw new Error('Stockfish is not available');
-      }
-    }
+  private async enqueue<T>(task: () => Promise<T>): Promise<T> {
+    const next = this.queueMutex.then(task, task);
+    this.queueMutex = next.catch(() => {});
+    return next;
+  }
 
-    // Set position safely via setPosition (position fen ... -> isready -> readyok)
-    await this.uci.setPosition(fen);
-    const lines = await this.uci.sendCommand(`go depth ${depth}`, /^bestmove/);
-    return parseUciOutput(lines, depth, fen);
+  public async evaluate(fen: string, depth: number = 10): Promise<EvalResult> {
+    return this.enqueue(async () => {
+      if (!this.uci || !this.uci.getReadyStatus()) {
+        const initialized = await this.init();
+        if (!initialized || !this.uci) {
+          throw new Error('Stockfish is not available');
+        }
+      }
+
+      await this.uci.setPosition(fen);
+      const lines = await this.uci.sendCommand(`go depth ${depth}`, /^bestmove/);
+      return parseUciOutput(lines, depth, fen);
+    });
+  }
+
+  public async evaluateRaw(fen: string, depth: number = 14) {
+    return this.enqueue(async () => {
+      if (!this.uci || !this.uci.getReadyStatus()) {
+        const initialized = await this.init();
+        if (!initialized || !this.uci) {
+          throw new Error('Stockfish is not available');
+        }
+      }
+
+      await this.uci.setPosition(fen);
+      const lines = await this.uci.sendCommand(`go depth ${depth}`, /^bestmove/);
+      return parseRawUciOutput(lines);
+    });
   }
 
   public static parseUciOutput(lines: string[], targetDepth: number, fen?: string): EvalResult {

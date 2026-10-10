@@ -44,13 +44,17 @@ export class UciProcess {
           stdio: ['pipe', 'pipe', 'pipe'],
         });
 
-        this.process.on('error', (err) => {
+        const currentProc = this.process;
+
+        currentProc.on('error', (err) => {
+          if (this.process !== currentProc) return;
           console.error(`[${this.currentOptions.name}] Process error:`, err);
           this.handleProcessCrash(err);
           reject(err);
         });
 
-        this.process.on('exit', (code, signal) => {
+        currentProc.on('exit', (code, signal) => {
+          if (this.process !== currentProc) return;
           console.log(`[${this.currentOptions.name}] Process exited (code: ${code}, signal: ${signal})`);
           this.handleProcessCrash(new Error(`Process exited with code ${code}`));
         });

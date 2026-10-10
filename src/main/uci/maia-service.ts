@@ -59,7 +59,10 @@ export class MaiaService {
 
   public async setLevel(level: BotLevel): Promise<{ success: boolean }> {
     this.currentLevel = level;
-    if (level === 'stockfish') {
+    const isLinux = process.platform === 'linux';
+
+    // Sur Linux ou en mode Stockfish, on n'utilise jamais Lc0
+    if (isLinux || level === 'stockfish') {
       if (this.uci) {
         await this.uci.stop();
         this.uci = null;
@@ -70,7 +73,6 @@ export class MaiaService {
     if (this.binaryPath && fs.existsSync(this.binaryPath)) {
       const weightFile = path.join(this.weightsDir, `maia-${level}.pb.gz`);
       if (fs.existsSync(weightFile)) {
-        // Restart Lc0 with new weights and eigen CPU backend (zero VRAM conflict with Ollama)
         if (this.uci) {
           await this.uci.stop();
         }
@@ -94,14 +96,26 @@ export class MaiaService {
   }
 
   public async getMove(fen: string): Promise<string> {
-    // 1. Stockfish master level
-    if (this.currentLevel === 'stockfish') {
-      const res = await this.stockfishService.evaluate(fen, 14);
-      if (res.bestMove) return res.bestMove;
+    const isLinux = process.platform === 'linux';
+
+    // 1. Sur Linux ou en mode Stockfish explicite : calcul direct ultra-rapide par Stockfish
+    if (isLinux || this.currentLevel === 'stockfish') {
+      const depthMap: Record<string, number> = {
+        '1100': 4,
+        '1300': 8,
+        '1500': 11,
+        'stockfish': 14,
+      };
+      const depth = depthMap[this.currentLevel] || 12;
+      const res = await this.stockfishService.evaluate(fen, depth);
+      if (res.bestMove) {
+        console.log(`[MaiaService] Coup joué par Stockfish (${this.currentLevel}, depth ${depth}) : ${res.bestMove}`);
+        return res.bestMove;
+      }
       throw new Error('Stockfish produced no move');
     }
 
-    // 2. Maia Lc0 mode : s'assurer que le processus est démarré
+    // 2. Maia Lc0 mode (hors Linux) : s'assurer que le processus est démarré
     if (!this.uci || !this.uci.getReadyStatus()) {
       await this.setLevel(this.currentLevel);
     }
@@ -109,7 +123,6 @@ export class MaiaService {
     if (this.uci && this.uci.getReadyStatus()) {
       try {
         await this.uci.setPosition(fen);
-        // Dans Maia, le coup humain instinctif est calculé avec "go nodes 1"
         const lines = await this.uci.sendCommand('go nodes 1', /^bestmove/, 4000);
         for (const line of lines) {
           if (line.startsWith('bestmove')) {
