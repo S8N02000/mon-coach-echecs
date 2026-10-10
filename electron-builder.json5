@@ -1,0 +1,48 @@
+{
+  "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
+  "appId": "com.moncoachechecs.app",
+  "productName": "Mon Coach Échecs",
+  "directories": {
+    "output": "release"
+  },
+  "files": [
+    "dist/**",
+    "dist-electron/**"
+  ],
+  "icon": "build/icon.png",
+  "extraResources": [
+    {
+      "from": "resources/bin",
+      "to": "bin",
+      "filter": ["**/*"]
+    },
+    {
+      "from": "resources",
+      "to": "resources",
+      "filter": ["icon.png", "icon.ico", "logo-full.png"]
+    }
+  ],
+  "win": {
+    "icon": "build/icon.ico",
+    "signAndEditExecutable": false,
+    "target": [
+      {
+        "target": "nsis",
+        "arch": ["x64"]
+      }
+    ],
+    "artifactName": "Setup-MonCoachEchecs.${ext}"
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "shortcutName": "Mon Coach Échecs"
+  },
+  "linux": {
+    "icon": "build/icons",
+    "target": ["AppImage"],
+    "category": "Game"
+  }
+}

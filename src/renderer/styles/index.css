@@ -1,0 +1,49 @@
+@import 'chessground/assets/chessground.base.css';
+@import 'chessground/assets/chessground.brown.css';
+@import 'chessground/assets/chessground.cburnett.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-zinc-950 text-zinc-100 select-none antialiased overflow-hidden;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  }
+}
+
+/* Chessground customization */
+.cg-wrap {
+  width: 100% !important;
+  height: 100% !important;
+  border-radius: 0.5rem;
+  box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.5), 0 8px 10px -6px rgb(0 0 0 / 0.5);
+  overflow: hidden;
+}
+
+cg-board {
+  border-radius: 0.5rem;
+}
+
+/* Blundered square highlight */
+square.blunder-highlight {
+  background-color: rgba(239, 68, 68, 0.55) !important;
+  box-shadow: inset 0 0 10px rgba(185, 28, 28, 0.8) !important;
+}
+
+/* Custom Scrollbar for move history */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(24, 24, 27, 0.5);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(82, 82, 91, 0.6);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(113, 113, 122, 0.9);
+}
