@@ -81,6 +81,7 @@ describe('Renderer Hooks', () => {
 
   describe('useChessGame', () => {
     beforeEach(() => {
+      localStorage.clear();
       // Mock window.chessAPI
       (window as any).chessAPI = {
         evaluatePosition: vi.fn().mockResolvedValue({
@@ -792,6 +793,79 @@ describe('Renderer Hooks', () => {
       });
 
       expect(result.current.coachMessage).toContain('Échec et mat !');
+    });
+
+    it('restores settings from localStorage on initial render', () => {
+      localStorage.setItem(
+        'mon-coach-user-settings',
+        JSON.stringify({
+          botLevel: '1500',
+          blunderGuardEnabled: false,
+          soundEnabled: false,
+          vocabularyStyle: 'club',
+          playerColor: 'black',
+          boardOrientation: 'black',
+        })
+      );
+
+      const { result } = renderHook(() => useChessGame());
+      expect(result.current.botLevel).toBe('1500');
+      expect(result.current.blunderGuardEnabled).toBe(false);
+      expect(result.current.soundEnabled).toBe(false);
+      expect(result.current.vocabularyStyle).toBe('club');
+      expect(result.current.playerColor).toBe('black');
+      expect(result.current.boardOrientation).toBe('black');
+    });
+
+    it('restores active game session from localStorage on initial render', () => {
+      localStorage.setItem(
+        'mon-coach-game-session',
+        JSON.stringify({
+          startingFen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+          fen: 'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq e6 0 2',
+          history: [
+            { san: 'e4', fen: 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1', from: 'e2', to: 'e4' },
+            { san: 'e5', fen: 'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq e6 0 2', from: 'e7', to: 'e5' },
+          ],
+          currentMoveIndex: 1,
+          playerColor: 'white',
+          actualPlayerColor: 'white',
+          boardOrientation: 'white',
+          evalResult: {
+            score: '+0.4',
+            numericScore: 0.4,
+            bestMove: 'g1f3',
+            refutationLineUci: '',
+            depth: 10,
+          },
+        })
+      );
+
+      const { result } = renderHook(() => useChessGame());
+      expect(result.current.history).toHaveLength(2);
+      expect(result.current.history[0].san).toBe('e4');
+      expect(result.current.history[1].san).toBe('e5');
+      expect(result.current.fen).toBe('rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq e6 0 2');
+      expect(result.current.evalResult.numericScore).toBe(0.4);
+    });
+
+    it('clears active game session from localStorage on startNewGame', () => {
+      localStorage.setItem(
+        'mon-coach-game-session',
+        JSON.stringify({
+          fen: 'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq e6 0 2',
+          history: [{ san: 'e4', fen: '', from: 'e2', to: 'e4' }],
+          currentMoveIndex: 0,
+        })
+      );
+
+      const { result } = renderHook(() => useChessGame());
+      act(() => {
+        result.current.startNewGame('white');
+      });
+
+      expect(localStorage.getItem('mon-coach-game-session')).toBeNull();
+      expect(result.current.history).toHaveLength(0);
     });
   });
 });

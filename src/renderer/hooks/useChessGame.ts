@@ -1,9 +1,16 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { Chess, Square } from 'chess.js';
 import { Key } from 'chessground/types';
 import { DrawShape } from 'chessground/draw';
 import { BotLevel, PlayerColor, EvalResult, VocabularyStyle, TacticalStep, GameOverState } from '../types/chess';
 import { useAudio } from './useAudio';
+import {
+  loadUserSettings,
+  saveUserSettings,
+  loadSavedGameSession,
+  saveGameSession,
+  clearSavedGameSession,
+} from '../utils/storage';
 
 export interface BlunderState {
   isOpen: boolean;
@@ -18,32 +25,72 @@ export interface BlunderState {
 export const DEFAULT_STARTING_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
 export function useChessGame() {
-  const [chess] = useState<Chess>(() => new Chess());
-  const [startingFen, setStartingFen] = useState<string>(DEFAULT_STARTING_FEN);
-  const [fen, setFen] = useState<string>(chess.fen());
-  const [history, setHistory] = useState<{ san: string; fen: string; from: Key; to: Key }[]>([]);
-  const [currentMoveIndex, setCurrentMoveIndex] = useState<number>(-1);
-  const [gameOverDismissed, setGameOverDismissed] = useState<boolean>(false);
+  const initialSettings = useMemo(() => loadUserSettings(), []);
+  const savedSession = useMemo(() => loadSavedGameSession(), []);
+
+  const [chess] = useState<Chess>(() => {
+    const instance = new Chess();
+    if (savedSession) {
+      try {
+        if (savedSession.startingFen && savedSession.startingFen !== DEFAULT_STARTING_FEN) {
+          instance.load(savedSession.startingFen);
+        }
+        for (const m of savedSession.history) {
+          const res = instance.move(m.san);
+          if (!res) {
+            instance.move({ from: m.from as Square, to: m.to as Square });
+          }
+        }
+      } catch {
+        try {
+          instance.load(savedSession.fen);
+        } catch {
+          instance.reset();
+        }
+      }
+    }
+    return instance;
+  });
+
+  const [startingFen, setStartingFen] = useState<string>(
+    savedSession?.startingFen || DEFAULT_STARTING_FEN
+  );
+  const [fen, setFen] = useState<string>(savedSession?.fen || chess.fen());
+  const [history, setHistory] = useState<{ san: string; fen: string; from: Key; to: Key }[]>(
+    savedSession?.history || []
+  );
+  const [currentMoveIndex, setCurrentMoveIndex] = useState<number>(
+    savedSession ? savedSession.currentMoveIndex : -1
+  );
+  const [gameOverDismissed, setGameOverDismissed] = useState<boolean>(
+    Boolean(savedSession?.gameOverDismissed)
+  );
 
   // Settings
-  const [playerColor, setPlayerColor] = useState<PlayerColor>('white');
-  const [actualPlayerColor, setActualPlayerColor] = useState<'white' | 'black'>('white');
-  const [boardOrientation, setBoardOrientation] = useState<'white' | 'black'>('white');
-  const [botLevel, setBotLevel] = useState<BotLevel>(() => {
-    return (typeof window !== 'undefined' && window.chessAPI?.platform === 'linux') ? 'stockfish' : '1100';
-  });
-  const [blunderGuardEnabled, setBlunderGuardEnabled] = useState<boolean>(true);
-  const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
-  const [vocabularyStyle, setVocabularyStyle] = useState<VocabularyStyle>('debutant');
+  const [playerColor, setPlayerColor] = useState<PlayerColor>(
+    savedSession?.playerColor ?? initialSettings.playerColor
+  );
+  const [actualPlayerColor, setActualPlayerColor] = useState<'white' | 'black'>(
+    savedSession?.actualPlayerColor ?? (initialSettings.playerColor === 'black' ? 'black' : 'white')
+  );
+  const [boardOrientation, setBoardOrientation] = useState<'white' | 'black'>(
+    savedSession?.boardOrientation ?? initialSettings.boardOrientation
+  );
+  const [botLevel, setBotLevel] = useState<BotLevel>(initialSettings.botLevel);
+  const [blunderGuardEnabled, setBlunderGuardEnabled] = useState<boolean>(initialSettings.blunderGuardEnabled);
+  const [soundEnabled, setSoundEnabled] = useState<boolean>(initialSettings.soundEnabled);
+  const [vocabularyStyle, setVocabularyStyle] = useState<VocabularyStyle>(initialSettings.vocabularyStyle);
 
   // Evaluation & AI
-  const [evalResult, setEvalResult] = useState<EvalResult>({
-    score: '+0.2',
-    numericScore: 0.2,
-    bestMove: '',
-    refutationLineUci: '',
-    depth: 10,
-  });
+  const [evalResult, setEvalResult] = useState<EvalResult>(
+    savedSession?.evalResult || {
+      score: '+0.2',
+      numericScore: 0.2,
+      bestMove: '',
+      refutationLineUci: '',
+      depth: 10,
+    }
+  );
   const [coachMessage, setCoachMessage] = useState<string | null>(null);
   const [tacticalSteps, setTacticalSteps] = useState<TacticalStep[]>([]);
   const [selectedStepIndex, setSelectedStepIndex] = useState<number | null>(null);
@@ -69,8 +116,76 @@ export function useChessGame() {
     playVictory,
     playDefeat,
   } = useAudio(soundEnabled);
-  const lastEvalRef = useRef<number>(0.2);
+  const lastEvalRef = useRef<number>(savedSession?.evalResult?.numericScore ?? 0.2);
   const botTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Synchronisation des réglages dans localStorage
+  useEffect(() => {
+    saveUserSettings({
+      botLevel,
+      blunderGuardEnabled,
+      soundEnabled,
+      vocabularyStyle,
+      playerColor,
+      boardOrientation,
+    });
+  }, [
+    botLevel,
+    blunderGuardEnabled,
+    soundEnabled,
+    vocabularyStyle,
+    playerColor,
+    boardOrientation,
+  ]);
+
+  // Synchronisation du niveau du bot avec le moteur backend au montage
+  useEffect(() => {
+    if (window.chessAPI?.setBotLevel) {
+      window.chessAPI.setBotLevel(botLevel).catch(() => {});
+    }
+  }, []);
+
+  // Synchronisation de la partie en cours dans localStorage
+  useEffect(() => {
+    if (history.length > 0 || startingFen !== DEFAULT_STARTING_FEN) {
+      saveGameSession({
+        startingFen,
+        fen,
+        history,
+        currentMoveIndex,
+        playerColor,
+        actualPlayerColor,
+        boardOrientation,
+        evalResult,
+        gameOverDismissed,
+      });
+    } else {
+      clearSavedGameSession();
+    }
+  }, [
+    startingFen,
+    fen,
+    history,
+    currentMoveIndex,
+    playerColor,
+    actualPlayerColor,
+    boardOrientation,
+    evalResult,
+    gameOverDismissed,
+  ]);
+
+  // Si une session a été restaurée et que c'est le tour du bot, déclencher son coup
+  useEffect(() => {
+    if (
+      savedSession &&
+      !chess.isGameOver() &&
+      chess.turn() !== (actualPlayerColor === 'white' ? 'w' : 'b')
+    ) {
+      botTimeoutRef.current = setTimeout(() => {
+        triggerBotMove();
+      }, 500);
+    }
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -260,6 +375,7 @@ export function useChessGame() {
   // Start new game
   const startNewGame = useCallback((colorChoice: PlayerColor = playerColor) => {
     chess.reset();
+    clearSavedGameSession();
     let assignedColor: 'white' | 'black' = 'white';
     if (colorChoice === 'random') {
       assignedColor = Math.random() > 0.5 ? 'white' : 'black';

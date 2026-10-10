@@ -15,6 +15,7 @@ import { useProgressiveCoach } from './hooks/useProgressiveCoach';
 import { SystemStatus } from './types/chess';
 import { Bot, User, Sparkles, CheckCircle2, AlertCircle, Zap, RotateCcw, Trophy, Crown } from 'lucide-react';
 import appLogo from './assets/logo.png';
+import { loadUserSettings, saveUserSettings } from './utils/storage';
 
 export const App: React.FC = () => {
   const game = useChessGame();
@@ -41,7 +42,13 @@ export const App: React.FC = () => {
 
   useEffect(() => {
     refreshStatus();
-    // Rafraîchissement périodique toutes les 3s pour détecter Ollama en direct
+    // Restaurer le modèle Ollama sauvegardé au démarrage
+    const saved = loadUserSettings();
+    if (saved.selectedOllamaModel && window.chessAPI?.setOllamaModel) {
+      window.chessAPI.setOllamaModel(saved.selectedOllamaModel).catch(() => {});
+    }
+
+    // Rafraîchissement périodique toutes les 3.5s pour détecter Ollama en direct
     const interval = setInterval(() => {
       refreshStatus();
     }, 3500);
@@ -57,6 +64,7 @@ export const App: React.FC = () => {
   const handleSelectModel = async (model: string) => {
     if (window.chessAPI?.setOllamaModel) {
       await window.chessAPI.setOllamaModel(model);
+      saveUserSettings({ selectedOllamaModel: model });
       refreshStatus();
     }
   };
