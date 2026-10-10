@@ -226,7 +226,7 @@ Les versions pré-compilées prêtes à l'emploi sont disponibles dans l'onglet 
 
 ### 1. Cloner le Dépôt Git
 ```bash
-git clone https://github.com/votre-compte/mon-coach-echecs.git
+git clone https://github.com/S8N02000/mon-coach-echecs.git
 cd mon-coach-echecs
 ```
 
