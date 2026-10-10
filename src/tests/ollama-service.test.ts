@@ -1,5 +1,7 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { OllamaService } from '../main/ai/ollama-service';
+import http from 'node:http';
+import { EventEmitter } from 'node:events';
 
 describe('OllamaService Full Coverage', () => {
   let service: OllamaService;
@@ -78,5 +80,147 @@ describe('OllamaService Full Coverage', () => {
     expect(res).toContain('[Coach Hors-ligne]');
     expect(res).toContain('f3');
     expect(res).toContain('-2.5');
+  });
+
+  describe('HTTP Mocking & Model Selection Logic', () => {
+    function mockHttpRequest(statusCode: number, responseBody: string, shouldTimeout = false, shouldError = false) {
+      return vi.spyOn(http, 'request').mockImplementation((_options: any, callback?: any) => {
+        const req: any = new EventEmitter();
+        req.write = vi.fn();
+        req.destroy = vi.fn();
+        req.end = vi.fn(() => {
+          if (shouldError) {
+            req.emit('error', new Error('Connection refused'));
+            return;
+          }
+          if (shouldTimeout) {
+            req.emit('timeout');
+            return;
+          }
+          if (callback) {
+            const res: any = new EventEmitter();
+            res.statusCode = statusCode;
+            callback(res);
+            res.emit('data', responseBody);
+            res.emit('end');
+          }
+        });
+        return req;
+      });
+    }
+
+    it('auto-selects deepseek-r1:14b when installed and VRAM >= 10GB', async () => {
+      const spy = mockHttpRequest(200, JSON.stringify({
+        models: [
+          { name: 'deepseek-r1:14b', size: 9 * 1024 * 1024 * 1024, details: { parameter_size: '14B' } },
+          { name: 'llama3:8b', size: 4 * 1024 * 1024 * 1024, details: { parameter_size: '8B' } },
+        ],
+      }));
+      vi.spyOn(service, 'getGpuInfo').mockReturnValue({
+        name: 'RTX 4070 Ti',
+        totalVramGb: 12.0,
+        freeVramGb: 11.0,
+        hasDedicatedGpu: true,
+      });
+
+      const models = await service.refreshModels();
+      expect(models).toContain('deepseek-r1:14b');
+      expect(service.getSelectedModel()).toBe('deepseek-r1:14b');
+      spy.mockRestore();
+    });
+
+    it('auto-selects deepseek-r1:8b when 14b is not present', async () => {
+      const spy = mockHttpRequest(200, JSON.stringify({
+        models: [
+          { name: 'deepseek-r1:8b', size: 5 * 1024 * 1024 * 1024, details: { parameter_size: '8B' } },
+          { name: 'mistral:7b', size: 4 * 1024 * 1024 * 1024, details: { parameter_size: '7B' } },
+        ],
+      }));
+
+      const models = await service.refreshModels();
+      expect(models).toContain('deepseek-r1:8b');
+      expect(service.getSelectedModel()).toBe('deepseek-r1:8b');
+      spy.mockRestore();
+    });
+
+    it('auto-selects deepseek-r1:7b when 8b is not present', async () => {
+      const spy = mockHttpRequest(200, JSON.stringify({
+        models: [
+          { name: 'deepseek-r1:7b', size: 4.5 * 1024 * 1024 * 1024, details: { parameter_size: '7B' } },
+        ],
+      }));
+
+      const models = await service.refreshModels();
+      expect(service.getSelectedModel()).toBe('deepseek-r1:7b');
+      spy.mockRestore();
+    });
+
+    it('handles non-200 HTTP status code in refreshModels', async () => {
+      const spy = mockHttpRequest(500, 'Internal Server Error');
+      await expect(service.refreshModels()).rejects.toThrow('Ollama returned status 500');
+      spy.mockRestore();
+    });
+
+    it('handles timeout in refreshModels', async () => {
+      const spy = mockHttpRequest(200, '', true);
+      await expect(service.refreshModels()).rejects.toThrow('Ollama request timed out');
+      spy.mockRestore();
+    });
+
+    it('asks coach and returns cleaned answer with thinking removed', async () => {
+      vi.spyOn(service, 'ensureOllamaRunning').mockResolvedValue(true);
+      const spy = mockHttpRequest(200, JSON.stringify({
+        message: {
+          content: '<think>Calcul tactique profond</think>Attention, vous perdez votre cavalier.',
+        },
+      }));
+
+      const answer = await service.askCoach({
+        fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+        coupJoue: 'f3',
+        deltaScore: '-2.0',
+        refutationLisible: 'e5',
+        meilleurCoup: 'e4',
+        styleVocabulaire: 'debutant',
+      });
+
+      expect(answer).toBe('Attention, vous perdez votre cavalier.');
+      expect(answer).not.toContain('<think>');
+      spy.mockRestore();
+    });
+
+    it('handles askCoach request timeout with fallback message', async () => {
+      vi.spyOn(service, 'ensureOllamaRunning').mockResolvedValue(true);
+      const spy = mockHttpRequest(200, '', true);
+
+      const answer = await service.askCoach({
+        fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+        coupJoue: 'f3',
+        deltaScore: '-2.0',
+        refutationLisible: 'e5',
+        meilleurCoup: 'e4',
+        styleVocabulaire: 'debutant',
+      });
+
+      expect(answer).toContain('met du temps à répondre');
+      spy.mockRestore();
+    });
+
+    it('handles askCoach network error with fallback message', async () => {
+      vi.spyOn(service, 'ensureOllamaRunning').mockResolvedValue(true);
+      const spy = mockHttpRequest(200, '', false, true);
+
+      const answer = await service.askCoach({
+        fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+        coupJoue: 'f3',
+        deltaScore: '-2.0',
+        refutationLisible: 'e5',
+        meilleurCoup: 'e4',
+        styleVocabulaire: 'debutant',
+      });
+
+      expect(answer).toContain('Erreur de communication avec Ollama');
+      spy.mockRestore();
+    });
   });
 });

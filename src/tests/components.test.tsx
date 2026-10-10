@@ -492,5 +492,197 @@ describe('Renderer Components', () => {
       fireEvent.click(screen.getByText(/Bilan/i));
       expect(onReopen).toHaveBeenCalledTimes(1);
     });
+
+    it('renders draw status correctly in GameOverAlert', () => {
+      render(
+        <GameOverAlert
+          gameOverState={{
+            ...mockGameOverState,
+            userResult: 'draw',
+            winner: 'draw',
+            scoreDisplay: '1/2-1/2',
+            title: 'Partie nulle par pat',
+            subtitle: 'Le Roi n’est pas en échec mais aucun coup légal n’est possible.',
+            isOpen: true,
+          }}
+          botDisplayName="Maia Chess (1100)"
+          onRestart={vi.fn()}
+          onExportPgn={vi.fn()}
+          onDismiss={vi.fn()}
+          onReopen={vi.fn()}
+        />
+      );
+
+      expect(screen.getAllByText(/Partie nulle par pat/i).length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText(/1\/2-1\/2/i).length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  describe('Component edge cases and states', () => {
+    it('SettingsModal returns null when closed', () => {
+      const { container } = render(
+        <SettingsModal
+          isOpen={false}
+          onClose={vi.fn()}
+          status={null}
+          onRefreshStatus={vi.fn()}
+          onSelectModel={vi.fn()}
+        />
+      );
+      expect(container.firstChild).toBeNull();
+    });
+
+    it('SettingsModal handles offline Ollama and allows model selection', () => {
+      const onSelect = vi.fn();
+      render(
+        <SettingsModal
+          isOpen={true}
+          onClose={vi.fn()}
+          status={{
+            gpu: { name: 'Intel Iris Xe', totalVramGb: 0, freeVramGb: 0, hasDedicatedGpu: false },
+            ollama: {
+              online: false,
+              models: ['deepseek-r1:8b'],
+              installedModelDetails: [
+                {
+                  name: 'deepseek-r1:8b',
+                  displayName: 'DEEPSEEK-R1:8B',
+                  sizeFormatted: '5.2 Go',
+                  parameterSize: '8B',
+                  isInstalled: true,
+                  isRecommended: true,
+                  minVramGb: 5.0,
+                  fitsVram: true,
+                  badge: 'Idéal',
+                },
+              ],
+              recommendedCatalog: [
+                {
+                  name: 'deepseek-r1:1.5b',
+                  displayName: 'DeepSeek-R1 1.5B',
+                  sizeFormatted: '1.1 Go',
+                  parameterSize: '1.5B',
+                  isInstalled: false,
+                  isRecommended: true,
+                  minVramGb: 2.0,
+                  fitsVram: true,
+                  badge: 'Ultra-Léger',
+                },
+              ],
+              selectedModel: 'other-model',
+            },
+            engines: { stockfish: true, lc0: false, maiaWeights: { '1100': false, '1300': false, '1500': false } },
+          }}
+          onRefreshStatus={vi.fn()}
+          onSelectModel={onSelect}
+        />
+      );
+
+      expect(screen.getByText(/Serveur non détecté/i)).toBeDefined();
+      expect(screen.getByText(/DeepSeek-R1 1.5B/i)).toBeDefined();
+
+      // Click on installed model card
+      fireEvent.click(screen.getByText('deepseek-r1:8b'));
+      expect(onSelect).toHaveBeenCalledWith('deepseek-r1:8b');
+    });
+
+    it('PgnModal returns null when closed', () => {
+      const { container } = render(
+        <PgnModal
+          isOpen={false}
+          onClose={vi.fn()}
+          pgn=""
+          onLoadPgnOrFen={vi.fn()}
+          onExportFile={vi.fn()}
+        />
+      );
+      expect(container.firstChild).toBeNull();
+    });
+
+    it('PgnModal copies PGN to clipboard and shows validation error on invalid input', async () => {
+      const writeTextMock = vi.fn().mockResolvedValue(undefined);
+      Object.defineProperty(navigator, 'clipboard', {
+        value: { writeText: writeTextMock },
+        configurable: true,
+      });
+
+      const onLoad = vi.fn().mockReturnValue(false);
+
+      render(
+        <PgnModal
+          isOpen={true}
+          onClose={vi.fn()}
+          pgn="1. e4 e5"
+          onLoadPgnOrFen={onLoad}
+          onExportFile={vi.fn()}
+        />
+      );
+
+      // Copy PGN
+      fireEvent.click(screen.getByText(/Copier dans le presse-papier/i));
+      expect(writeTextMock).toHaveBeenCalledWith('1. e4 e5');
+
+      // Import tab -> invalid string
+      fireEvent.click(screen.getByText(/Importer PGN \/ FEN/i));
+      const textarea = screen.getByPlaceholderText(/Ex: 1\. e4 e5/i);
+      fireEvent.change(textarea, { target: { value: 'invalid pgn gibberish' } });
+      fireEvent.click(screen.getByText(/Charger la position/i));
+
+      expect(onLoad).toHaveBeenCalledWith('invalid pgn gibberish');
+      expect(screen.getByText(/Format invalide/i)).toBeDefined();
+    });
+
+    it('GameControls handles selecting different bot levels and colors', () => {
+      const onSetBotLevel = vi.fn();
+      const onSetPlayerColor = vi.fn();
+
+      render(
+        <GameControls
+          botLevel="1100"
+          onSetBotLevel={onSetBotLevel}
+          playerColor="white"
+          onSetPlayerColor={onSetPlayerColor}
+          onNewGame={vi.fn()}
+          onFlipBoard={vi.fn()}
+          blunderGuardEnabled={false}
+          onToggleBlunderGuard={vi.fn()}
+          soundEnabled={false}
+          onToggleSound={vi.fn()}
+          onOpenPgnModal={vi.fn()}
+          onOpenSettingsModal={vi.fn()}
+        />
+      );
+
+      // Change bot level by clicking bot button
+      const botButtons = screen.getAllByRole('button');
+      const maia1500 = botButtons.find((b) => b.textContent?.includes('1500'));
+      if (maia1500) {
+        fireEvent.click(maia1500);
+        expect(onSetBotLevel).toHaveBeenCalledWith('1500');
+      }
+
+      // Change player color
+      fireEvent.click(screen.getByText(/Noirs ⚫/i));
+      expect(onSetPlayerColor).toHaveBeenCalledWith('black');
+    });
+
+    it('Chessboard renders with custom shapes and last move highlight', () => {
+      const { container } = render(
+        <Chessboard
+          fen="rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1"
+          orientation="white"
+          turnColor="black"
+          dests={new Map()}
+          isInteractive={false}
+          shapes={[
+            { orig: 'e2' as any, dest: 'e4' as any, brush: 'green' },
+            { orig: 'g8' as any, dest: 'f6' as any, brush: 'red' },
+          ]}
+          lastMove={['e2' as any, 'e4' as any]}
+          onMove={vi.fn()}
+        />
+      );
+      expect(container.firstChild).toBeDefined();
+    });
   });
 });

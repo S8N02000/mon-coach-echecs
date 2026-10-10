@@ -29,7 +29,9 @@ export function useChessGame() {
   const [playerColor, setPlayerColor] = useState<PlayerColor>('white');
   const [actualPlayerColor, setActualPlayerColor] = useState<'white' | 'black'>('white');
   const [boardOrientation, setBoardOrientation] = useState<'white' | 'black'>('white');
-  const [botLevel, setBotLevel] = useState<BotLevel>('1100');
+  const [botLevel, setBotLevel] = useState<BotLevel>(() => {
+    return (typeof window !== 'undefined' && window.chessAPI?.platform === 'linux') ? 'stockfish' : '1100';
+  });
   const [blunderGuardEnabled, setBlunderGuardEnabled] = useState<boolean>(true);
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
   const [vocabularyStyle, setVocabularyStyle] = useState<VocabularyStyle>('debutant');
@@ -671,7 +673,13 @@ export function useChessGame() {
   const getPgn = useCallback((): string => {
     const today = new Date().toISOString().slice(0, 10).replace(/-/g, '.');
     const playerIsWhite = actualPlayerColor === 'white';
-    const botDisplayName = botLevel === 'stockfish' ? 'Stockfish 19 (Maître)' : `Maia (${botLevel})`;
+    const isLinux = typeof window !== 'undefined' && window.chessAPI?.platform === 'linux';
+    const botDisplayName =
+      botLevel === 'stockfish'
+        ? 'Stockfish 19 (Maître)'
+        : isLinux
+        ? `Stockfish (${botLevel})`
+        : `Maia (${botLevel})`;
     const whiteName = playerIsWhite ? 'Joueur' : botDisplayName;
     const blackName = playerIsWhite ? botDisplayName : 'Joueur';
 

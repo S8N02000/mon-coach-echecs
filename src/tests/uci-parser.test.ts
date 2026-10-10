@@ -110,4 +110,64 @@ describe('UCI Parser (Stockfish Output)', () => {
     expect(result.score).toBe('+M1');
     expect(result.numericScore).toBe(10);
   });
+
+  describe('parseRawUciOutput', () => {
+    it('parses raw UCI output with bestmove and centipawn score', async () => {
+      const { parseRawUciOutput } = await import('../main/uci/uci-parser');
+      const lines = [
+        'info depth 14 seldepth 16 score cp 45 nodes 100000 nps 1500000 pv e2e4 e7e5 g1f3 b8c6',
+        'bestmove e2e4 ponder e7e5',
+      ];
+      const result = parseRawUciOutput(lines);
+
+      expect(result.bestMove).toBe('e2e4');
+      expect(result.cpScore).toBe(45);
+      expect(result.mateScore).toBeNull();
+      expect(result.pv).toBe('e2e4 e7e5 g1f3 b8c6');
+      expect(result.depth).toBe(14);
+    });
+
+    it('parses raw UCI output with mate score', async () => {
+      const { parseRawUciOutput } = await import('../main/uci/uci-parser');
+      const lines = [
+        'info depth 8 score mate 3 pv f7f8q e8f8',
+        'bestmove f7f8q',
+      ];
+      const result = parseRawUciOutput(lines);
+
+      expect(result.bestMove).toBe('f7f8q');
+      expect(result.cpScore).toBeNull();
+      expect(result.mateScore).toBe(3);
+      expect(result.depth).toBe(8);
+      expect(result.pv).toBe('f7f8q e8f8');
+    });
+
+    it('handles bestmove (none)', async () => {
+      const { parseRawUciOutput } = await import('../main/uci/uci-parser');
+      const lines = [
+        'info depth 0 score mate 0',
+        'bestmove (none)',
+      ];
+      const result = parseRawUciOutput(lines);
+
+      expect(result.bestMove).toBe('');
+      expect(result.mateScore).toBe(0);
+      expect(result.cpScore).toBeNull();
+    });
+
+    it('handles lines without depth, score or pv', async () => {
+      const { parseRawUciOutput } = await import('../main/uci/uci-parser');
+      const lines = [
+        'Stockfish 16 by the Stockfish developers',
+        'info string NNUE evaluation enabled',
+      ];
+      const result = parseRawUciOutput(lines);
+
+      expect(result.bestMove).toBe('');
+      expect(result.cpScore).toBeNull();
+      expect(result.mateScore).toBeNull();
+      expect(result.pv).toBe('');
+      expect(result.depth).toBe(0);
+    });
+  });
 });

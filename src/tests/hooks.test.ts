@@ -55,6 +55,28 @@ describe('Renderer Hooks', () => {
         result.current.playDefeat();
       }).not.toThrow();
     });
+
+    it('handles environment without Web Audio API gracefully', () => {
+      const origAudio = (window as any).AudioContext;
+      const origWebkit = (window as any).webkitAudioContext;
+      try {
+        (window as any).AudioContext = undefined;
+        (window as any).webkitAudioContext = undefined;
+        const { result } = renderHook(() => useAudio(true));
+        expect(() => {
+          result.current.playMove();
+          result.current.playCapture();
+          result.current.playCheck();
+          result.current.playBlunder();
+          result.current.playCoachChime();
+          result.current.playVictory();
+          result.current.playDefeat();
+        }).not.toThrow();
+      } finally {
+        (window as any).AudioContext = origAudio;
+        (window as any).webkitAudioContext = origWebkit;
+      }
+    });
   });
 
   describe('useChessGame', () => {
@@ -546,6 +568,230 @@ describe('Renderer Hooks', () => {
       expect(result.current.gameOverState.title).toBe('Victoire par échec et mat !');
       expect(result.current.evalResult.score).toBe('+M0');
       expect(result.current.evalResult.numericScore).toBe(10);
+    });
+
+    it('wraps long PGN lines when length exceeds 78 characters', () => {
+      const { result } = renderHook(() => useChessGame());
+      // Load a long game
+      act(() => {
+        result.current.loadPgnOrFen(
+          '1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 Nf6 5. O-O Be7 6. Re1 b5 7. Bb3 d6 8. c3 O-O 9. h3 Nb8 10. d4 Nbd7 11. c4 c6 12. cxb5 axb5 13. Nc3 Bb7 14. Bg5 h6 15. Bh4 Re8 16. Qd2 Nh7'
+        );
+      });
+      // PGN string must contain newlines in move body due to line wrapping
+      const pgn = result.current.pgn;
+      expect(pgn).toContain('\n');
+      expect(pgn).toContain('16. Qd2 Nh7');
+    });
+
+    it('computes gameOverState and PGN termination for insufficient material', () => {
+      const { result } = renderHook(() => useChessGame());
+      // King vs King: insufficient material
+      act(() => {
+        result.current.loadPgnOrFen('8/8/8/4k3/8/8/4K3/8 w - - 0 1');
+      });
+
+      expect(result.current.gameOverState.isGameOver).toBe(true);
+      expect(result.current.gameOverState.reason).toBe('insufficient');
+      expect(result.current.gameOverState.title).toBe('Partie nulle (matériel)');
+      expect(result.current.pgn).toContain('[Termination "Partie nulle (matériel insuffisant)"]');
+      expect(result.current.pgn).toContain('[Result "1/2-1/2"]');
+    });
+
+    it('computes gameOverState and PGN termination for threefold repetition', () => {
+      const { result } = renderHook(() => useChessGame());
+      // Sequence that produces threefold repetition
+      act(() => {
+        result.current.loadPgnOrFen(
+          '1. Nf3 Nf6 2. Ng1 Ng8 3. Nf3 Nf6 4. Ng1 Ng8'
+        );
+      });
+
+      expect(result.current.gameOverState.isGameOver).toBe(true);
+      expect(result.current.gameOverState.reason).toBe('threefold');
+      expect(result.current.gameOverState.title).toBe('Partie nulle (répétition)');
+      expect(result.current.pgn).toContain('[Termination "Partie nulle (répétition)"]');
+    });
+
+    it('computes gameOverState and PGN termination for 50-move rule draw', () => {
+      const { result } = renderHook(() => useChessGame());
+      // 50-move rule with sufficient material (Queen still on board)
+      act(() => {
+        result.current.loadPgnOrFen('4k3/8/8/8/8/8/8/4K2Q w - - 100 50');
+      });
+
+      expect(result.current.gameOverState.isGameOver).toBe(true);
+      expect(result.current.gameOverState.title).toBe('Partie nulle');
+      expect(result.current.pgn).toContain('[Termination "Partie nulle"]');
+      expect(result.current.pgn).toContain('[Result "1/2-1/2"]');
+    });
+
+    it('computes gameOverState when Black checkmates White', () => {
+      const { result } = renderHook(() => useChessGame());
+      // Fool's mate: 1. f3 e5 2. g4 Qh4# (Black wins)
+      act(() => {
+        result.current.loadPgnOrFen('rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 1 3');
+      });
+
+      expect(result.current.gameOverState.isGameOver).toBe(true);
+      expect(result.current.gameOverState.reason).toBe('checkmate');
+      expect(result.current.gameOverState.winner).toBe('black');
+      expect(result.current.pgn).toContain('[Result "0-1"]');
+      expect(result.current.pgn).toContain('[Termination "Les Noirs gagnent par échec et mat"]');
+    });
+
+    it('confirms a pending blunder move when handleBlunderConfirm is called', async () => {
+      const { result } = renderHook(() => useChessGame());
+
+      // Simulate a blunder state
+      act(() => {
+        (result.current as any).blunderState.isOpen = true;
+        (result.current as any).blunderState.pendingMove = { orig: 'e2', dest: 'e4', san: 'e4' };
+        (result.current as any).blunderState.deltaScore = '-3.2';
+        (result.current as any).blunderState.blunderFen = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1';
+      });
+
+      // Confirm the blunder move
+      await act(async () => {
+        result.current.handleBlunderConfirm();
+      });
+
+      expect(result.current.blunderState.isOpen).toBe(false);
+      expect(result.current.history.length).toBeGreaterThanOrEqual(1);
+      expect(result.current.history[0].san).toBe('e4');
+    });
+
+    it('handles askCoach when blunder modal is open', async () => {
+      const { result } = renderHook(() => useChessGame());
+
+      act(() => {
+        (result.current as any).blunderState.isOpen = true;
+        (result.current as any).blunderState.pendingMove = { orig: 'f2', dest: 'f3', san: 'f3' };
+        (result.current as any).blunderState.deltaScore = '-2.5';
+        (result.current as any).blunderState.blunderFen = 'rnbqkbnr/pppppppp/8/8/8/5P2/PPPPP1PP/RNBQKBNR b KQkq - 0 1';
+        (result.current as any).blunderState.refutationLineUci = 'e7e5';
+        (result.current as any).blunderState.bestMove = 'e2e4';
+      });
+
+      await act(async () => {
+        await result.current.askCoach();
+      });
+
+      expect(result.current.coachMessage).toBeTruthy();
+    });
+
+    it('handles askCoach when opponent made last move', async () => {
+      const { result } = renderHook(() => useChessGame());
+
+      // Start as White, play e4, then bot plays e5
+      await act(async () => {
+        result.current.handleHumanMove('e2' as any, 'e4' as any);
+      });
+
+      // Now history length is 1 or more, call askCoach
+      await act(async () => {
+        await result.current.askCoach();
+      });
+
+      expect(result.current.coachMessage).toBeTruthy();
+    });
+
+    it('displays Stockfish 19 in PGN when botLevel is stockfish', async () => {
+      const { result } = renderHook(() => useChessGame());
+
+      await act(async () => {
+        await result.current.handleSetBotLevel('stockfish');
+      });
+
+      expect(result.current.pgn).toContain('Stockfish 19 (Maître)');
+    });
+
+    it('handles askCoach failure and displays friendly error message', async () => {
+      (window as any).chessAPI.askCoach = vi.fn().mockRejectedValue(new Error('Network failure'));
+      const { result } = renderHook(() => useChessGame());
+
+      await act(async () => {
+        await result.current.askCoach();
+      });
+
+      expect(result.current.coachMessage).toContain("Impossible de joindre le Coach IA");
+    });
+
+    it('enables castling for Black via King to Rook, Rook to King and standard King 2 squares', async () => {
+      const { result } = renderHook(() => useChessGame());
+
+      // Start game as Black so it is player's turn on Black to move
+      act(() => {
+        result.current.startNewGame('black');
+      });
+
+      // Setup position where Black can castle kingside
+      act(() => {
+        result.current.loadPgnOrFen('r1bqk2r/pppp1ppp/2n2n2/2b1p3/4P3/3P1N2/PPP1BPPP/RNBQK2R b KQkq - 2 5');
+      });
+
+      // Check dests for Black king e8
+      const e8Dests = result.current.dests.get('e8' as any) || [];
+      expect(e8Dests).toContain('g8');
+      expect(e8Dests).toContain('h8');
+
+      // Test Black castling by moving King directly onto Rook (e8 -> h8)
+      await act(async () => {
+        await result.current.handleHumanMove('e8' as any, 'h8' as any);
+      });
+
+      expect(result.current.history[0]?.san).toBe('O-O');
+      expect(result.current.fen).toContain('r1bq1rk1');
+    });
+
+    it('reloads custom starting FEN when jumping back to move -1', () => {
+      const { result } = renderHook(() => useChessGame());
+      const customFen = 'r1bqk2r/pppp1ppp/2n2n2/2b1p3/4P3/3P1N2/PPP1BPPP/RNBQK2R w KQkq - 2 5';
+
+      act(() => {
+        result.current.loadPgnOrFen(customFen);
+      });
+
+      // Jump to starting custom position
+      act(() => {
+        result.current.jumpToMove(-1);
+      });
+
+      expect(result.current.fen).toBe(customFen);
+      expect(result.current.currentMoveIndex).toBe(-1);
+    });
+
+    it('formats bot name in PGN on Linux platform', async () => {
+      (window as any).chessAPI.platform = 'linux';
+      const { result } = renderHook(() => useChessGame());
+
+      await act(async () => {
+        await result.current.handleSetBotLevel('1300');
+      });
+
+      expect(result.current.pgn).toContain('Stockfish (1300)');
+      (window as any).chessAPI.platform = undefined;
+    });
+
+    it('handles blunder confirm that delivers checkmate', () => {
+      const { result } = renderHook(() => useChessGame());
+
+      // Position before Qxf7#
+      act(() => {
+        result.current.loadPgnOrFen('r1bqkb1r/pppp1ppp/2n5/4p3/2B1n3/5Q2/PPPP1PPP/RNB1K1NR w KQkq - 0 4');
+      });
+
+      // Simulate a blunder confirmation that delivers checkmate
+      act(() => {
+        (result.current as any).blunderState.isOpen = true;
+        (result.current as any).blunderState.pendingMove = { orig: 'f3', dest: 'f7', san: 'Qxf7#' };
+      });
+
+      act(() => {
+        result.current.handleBlunderConfirm();
+      });
+
+      expect(result.current.coachMessage).toContain('Échec et mat !');
     });
   });
 });

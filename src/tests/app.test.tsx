@@ -90,4 +90,67 @@ describe('App Root Component', () => {
       fireEvent.click(restartBtns[0]);
     });
   });
+
+  it('opens PGN modal and exports PGN file', async () => {
+    await act(async () => {
+      render(<App />);
+    });
+
+    // Click PGN/FEN button
+    const pgnBtn = screen.getByText('PGN/FEN');
+    await act(async () => {
+      fireEvent.click(pgnBtn);
+    });
+
+    expect(screen.getByText(/Exporter la partie/i)).toBeDefined();
+
+    // Click Enregistrer fichier .pgn
+    const exportFileBtn = screen.getByText(/Enregistrer fichier \.pgn/i);
+    await act(async () => {
+      fireEvent.click(exportFileBtn);
+    });
+
+    expect((window as any).chessAPI.exportPgnFile).toHaveBeenCalled();
+  });
+
+  it('selects Ollama model and updates system status', async () => {
+    await act(async () => {
+      render(<App />);
+    });
+
+    // Open settings modal
+    const settingsBtn = screen.getByText('Réglages');
+    await act(async () => {
+      fireEvent.click(settingsBtn);
+    });
+
+    // Click on model card to change model
+    const modelCards = screen.getAllByText('deepseek-r1:8b');
+    await act(async () => {
+      fireEvent.click(modelCards[modelCards.length - 1]);
+    });
+
+    expect((window as any).chessAPI.setOllamaModel).toHaveBeenCalledWith('deepseek-r1:8b');
+  });
+
+  it('toggles blunder guard, sound, and flips board', async () => {
+    await act(async () => {
+      render(<App />);
+    });
+
+    const blunderBtn = screen.getByText('Anti-Gaffe');
+    await act(async () => {
+      fireEvent.click(blunderBtn);
+    });
+
+    const soundBtn = screen.getByText('Sons');
+    await act(async () => {
+      fireEvent.click(soundBtn);
+    });
+
+    const flipBtn = screen.getByText('Inverser');
+    await act(async () => {
+      fireEvent.click(flipBtn);
+    });
+  });
 });

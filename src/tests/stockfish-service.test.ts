@@ -43,4 +43,41 @@ describe('StockfishService Full Coverage', () => {
     await stockfish.stop();
     expect(true).toBe(true);
   });
+
+  it('evaluates raw UCI output using evaluateRaw', async () => {
+    const startFen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+    const rawEval = await stockfish.evaluateRaw(startFen, 6);
+    expect(rawEval).toHaveProperty('bestMove');
+    expect(rawEval).toHaveProperty('depth');
+    expect(typeof rawEval.depth).toBe('number');
+  });
+
+  it('delegates static parseUciOutput to parser', () => {
+    const lines = [
+      'info depth 10 score cp 50 pv e2e4',
+      'bestmove e2e4',
+    ];
+    const fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+    const res = StockfishService.parseUciOutput(lines, 10, fen);
+    expect(res.bestMove).toBe('e2e4');
+    expect(res.numericScore).toBeCloseTo(0.5, 2);
+  });
+
+  it('handles missing binary gracefully and rejects evaluate', async () => {
+    const brokenSf = new StockfishService('Broken-SF');
+    (brokenSf as any).binaryPath = null;
+    (brokenSf as any).findBinaryPath = () => null;
+
+    expect(brokenSf.isAvailable()).toBe(false);
+    const ready = await brokenSf.init();
+    expect(ready).toBe(false);
+
+    await expect(
+      brokenSf.evaluate('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', 1)
+    ).rejects.toThrow('Stockfish is not available');
+
+    await expect(
+      brokenSf.evaluateRaw('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', 1)
+    ).rejects.toThrow('Stockfish is not available');
+  });
 });
