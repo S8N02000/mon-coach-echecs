@@ -24,24 +24,35 @@ describe('MaiaService Full Coverage', () => {
     expect(status.weights).toHaveProperty('1100');
     expect(status.weights).toHaveProperty('1300');
     expect(status.weights).toHaveProperty('1500');
+    expect(status.weights).toHaveProperty('1700');
+    expect(status.weights).toHaveProperty('1900');
   });
 
   it('switches between all Maia levels and Stockfish master', async () => {
-    const res1100 = await maia.setLevel('1100');
-    expect(res1100.success).toBe(true);
-    expect(maia.getStatus().currentLevel).toBe('1100');
-
-    const res1300 = await maia.setLevel('1300');
-    expect(res1300.success).toBe(true);
-    expect(maia.getStatus().currentLevel).toBe('1300');
-
-    const res1500 = await maia.setLevel('1500');
-    expect(res1500.success).toBe(true);
-    expect(maia.getStatus().currentLevel).toBe('1500');
+    for (const lvl of ['1100', '1300', '1500', '1700', '1900', '2100'] as const) {
+      const res = await maia.setLevel(lvl);
+      expect(res.success).toBe(true);
+      expect(maia.getStatus().currentLevel).toBe(lvl);
+    }
 
     const resSf = await maia.setLevel('stockfish');
     expect(resSf.success).toBe(true);
     expect(maia.getStatus().currentLevel).toBe('stockfish');
+  });
+
+  it('manages Maia 3 profiles, hardware recommendations and model switching', async () => {
+    const infoGpu = maia.getMaia3Info(8);
+    expect(infoGpu.recommendedModel).toBe('79m');
+    expect(infoGpu.profiles).toHaveLength(3);
+    expect(infoGpu.profiles.find((p) => p.id === '79m')?.isRecommended).toBe(true);
+
+    const infoLow = maia.getMaia3Info(0);
+    expect(infoLow.recommendedModel).toBe('5m');
+    expect(infoLow.profiles.find((p) => p.id === '5m')?.isRecommended).toBe(true);
+
+    const res = await maia.setSelectedModel('23m');
+    expect(res.success).toBe(true);
+    expect(maia.getSelectedModel()).toBe('23m');
   });
 
   it('generates moves in both White and Black positions', async () => {
@@ -159,9 +170,25 @@ describe('MaiaService Full Coverage', () => {
       stop: async () => {},
     };
     const brokenMaia = new MaiaService(brokenSf);
+    await brokenMaia.setLevel('stockfish');
 
     await expect(
       brokenMaia.getMove('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1')
     ).rejects.toThrow('Stockfish produced no move');
+  });
+
+  it('throws error when no bot engine can produce a move', async () => {
+    const brokenSf: any = {
+      evaluate: async () => ({ bestMove: '' }),
+      stop: async () => {},
+    };
+    const brokenMaia = new MaiaService(brokenSf);
+    (brokenMaia as any).maia3Binary = null;
+    (brokenMaia as any).binaryPath = null;
+    await brokenMaia.setLevel('1100');
+
+    await expect(
+      brokenMaia.getMove('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1')
+    ).rejects.toThrow('No bot move could be generated');
   });
 });

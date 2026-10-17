@@ -125,7 +125,7 @@ describe('App Root Component', () => {
     });
 
     // Click on model card to change model
-    const modelCards = screen.getAllByText('deepseek-r1:8b');
+    const modelCards = screen.getAllByText(/DEEPSEEK-R1:8B/i);
     await act(async () => {
       fireEvent.click(modelCards[modelCards.length - 1]);
     });

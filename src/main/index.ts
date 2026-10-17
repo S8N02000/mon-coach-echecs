@@ -129,14 +129,29 @@ ipcMain.handle('chess:get-system-status', async () => {
     engines: {
       stockfish: stockfishService.isAvailable(),
       lc0: maiaStatus.lc0Available,
+      maia3: maiaStatus.maia3Available,
+      activeEngineType: maiaStatus.engineType,
       maiaWeights: maiaStatus.weights,
     },
+    maia3Info: maiaService.getMaia3Info(gpu.totalVramGb),
   };
 });
 
 ipcMain.handle('chess:set-ollama-model', async (_, model: string) => {
   ollamaService.setSelectedModel(model);
   return { success: true };
+});
+
+ipcMain.handle('chess:set-maia-model', async (_, model: '5m' | '23m' | '79m') => {
+  return maiaService.setSelectedModel(model);
+});
+
+ipcMain.handle('chess:download-maia-model', async (_, model: '5m' | '23m' | '79m') => {
+  return maiaService.downloadModel(model, (progress) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('chess:maia-download-progress', progress);
+    }
+  });
 });
 
 ipcMain.handle('chess:export-pgn', async (_, pgn: string, defaultName?: string) => {

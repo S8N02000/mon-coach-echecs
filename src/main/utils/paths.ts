@@ -24,6 +24,30 @@ export function getResourcesBinDir(): string {
   return moduleBin;
 }
 
+export function getModelsDir(): string {
+  if (app?.isPackaged) {
+    return path.join(process.resourcesPath, 'models');
+  }
+  const cwdModels = path.join(process.cwd(), 'resources', 'models');
+  if (fs.existsSync(cwdModels)) {
+    return cwdModels;
+  }
+  return path.join(getCurrentDir(import.meta.url), '..', '..', '..', 'resources', 'models');
+}
+
+export function getAppDataModelsDir(): string {
+  try {
+    if (app?.getPath) {
+      const p = path.join(app.getPath('userData'), 'models');
+      fs.mkdirSync(p, { recursive: true });
+      return p;
+    }
+  } catch {}
+  const local = path.join(process.cwd(), 'resources', 'models');
+  fs.mkdirSync(local, { recursive: true });
+  return local;
+}
+
 export function getPreloadPath(): string {
   const currentDir = getCurrentDir(import.meta.url);
   const cjs = path.join(currentDir, '..', 'preload', 'preload.cjs');

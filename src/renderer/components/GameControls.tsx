@@ -9,11 +9,14 @@ import {
   VolumeX,
   ShieldAlert,
   ShieldCheck,
+  Crown,
 } from 'lucide-react';
 import { BotLevel, PlayerColor } from '../types/chess';
 
 interface GameControlsProps {
   botLevel: BotLevel;
+  activeEngineType?: 'maia3' | 'lc0' | 'stockfish';
+  activeMaiaBadge?: string;
   onSetBotLevel: (level: BotLevel) => void;
   playerColor: PlayerColor;
   onSetPlayerColor: (color: PlayerColor) => void;
@@ -27,8 +30,19 @@ interface GameControlsProps {
   onOpenSettingsModal: () => void;
 }
 
+const MAIA_LEVELS: { id: BotLevel; label: string; sub: string }[] = [
+  { id: '1100', label: 'Maia 1100', sub: 'Débutant' },
+  { id: '1300', label: 'Maia 1300', sub: 'Amateur' },
+  { id: '1500', label: 'Maia 1500', sub: 'Intermédiaire' },
+  { id: '1700', label: 'Maia 1700', sub: 'Confirmé' },
+  { id: '1900', label: 'Maia 1900', sub: 'Expert' },
+  { id: '2100', label: 'Maia 2100', sub: 'Candidat Maître' },
+];
+
 export const GameControls: React.FC<GameControlsProps> = ({
   botLevel,
+  activeEngineType,
+  activeMaiaBadge,
   onSetBotLevel,
   playerColor,
   onSetPlayerColor,
@@ -41,37 +55,26 @@ export const GameControls: React.FC<GameControlsProps> = ({
   onOpenPgnModal,
   onOpenSettingsModal,
 }) => {
-  const isLinux = typeof window !== 'undefined' && window.chessAPI?.platform === 'linux';
-
   return (
     <div className="w-full bg-zinc-900/90 border border-zinc-800 rounded-2xl p-4 shadow-xl flex flex-col gap-3.5">
       {/* Sélecteur de niveau du Bot */}
       <div>
         <label className="text-zinc-400 text-xs font-medium block mb-1.5 flex items-center justify-between">
           <span>Adversaire Virtuel</span>
-          {isLinux && (
-            <span className="text-[10px] text-emerald-400 font-mono">Stockfish 19 (Linux)</span>
-          )}
+          <span className="text-[10px] text-indigo-400 font-mono">
+            {botLevel === 'stockfish'
+              ? 'Stockfish 19 (Max)'
+              : activeEngineType === 'maia3'
+              ? `Maia 3 (${activeMaiaBadge || 'Humain'})`
+              : 'Maia 1 (Lc0)'}
+          </span>
         </label>
         <div className="grid grid-cols-2 gap-1.5">
-          {(isLinux
-            ? [
-                { id: '1100', label: 'Stockfish Débutant', sub: 'Niveau ~1100' },
-                { id: '1300', label: 'Stockfish Amateur', sub: 'Niveau ~1300' },
-                { id: '1500', label: 'Stockfish Intermédiaire', sub: 'Niveau ~1500' },
-                { id: 'stockfish', label: 'Stockfish Maître', sub: 'Niveau Max' },
-              ]
-            : [
-                { id: '1100', label: 'Maia 1100', sub: 'Débutant' },
-                { id: '1300', label: 'Maia 1300', sub: 'Amateur' },
-                { id: '1500', label: 'Maia 1500', sub: 'Intermédiaire' },
-                { id: 'stockfish', label: 'Stockfish', sub: 'Maître' },
-              ]
-          ).map((lvl) => (
+          {MAIA_LEVELS.map((lvl) => (
             <button
               key={lvl.id}
-              onClick={() => onSetBotLevel(lvl.id as BotLevel)}
-              className={`py-2 px-2.5 rounded-xl border text-left transition-all ${
+              onClick={() => onSetBotLevel(lvl.id)}
+              className={`py-1.5 px-2.5 rounded-xl border text-left transition-all ${
                 botLevel === lvl.id
                   ? 'bg-indigo-600/20 border-indigo-500/80 text-indigo-200 shadow-md ring-1 ring-indigo-500/50'
                   : 'bg-zinc-950/60 border-zinc-800 text-zinc-300 hover:border-zinc-700'
@@ -81,6 +84,26 @@ export const GameControls: React.FC<GameControlsProps> = ({
               <div className="text-[10px] text-zinc-400">{lvl.sub}</div>
             </button>
           ))}
+        </div>
+        {/* Niveau Ultime Stockfish */}
+        <div className="mt-1.5">
+          <button
+            onClick={() => onSetBotLevel('stockfish')}
+            className={`w-full py-1.5 px-2.5 rounded-xl border text-left transition-all flex items-center justify-between ${
+              botLevel === 'stockfish'
+                ? 'bg-amber-600/20 border-amber-500/80 text-amber-200 shadow-md ring-1 ring-amber-500/50'
+                : 'bg-zinc-950/60 border-zinc-800 text-zinc-300 hover:border-zinc-700'
+            }`}
+          >
+            <div>
+              <div className="text-xs font-semibold flex items-center gap-1.5">
+                <span>Stockfish Grand Maître</span>
+                <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 font-medium">Niveau Max</span>
+              </div>
+              <div className="text-[10px] text-zinc-400">Calcul sans merci (~3500 Elo)</div>
+            </div>
+            <Crown className="w-4 h-4 text-amber-400/80" />
+          </button>
         </div>
       </div>
 

@@ -18,9 +18,9 @@ describe('Storage Utility (Preferences & Game Session)', () => {
   });
 
   describe('getDefaultSettings', () => {
-    it('returns stockfish for linux platform', () => {
+    it('returns 1100 as default bot level for linux platform', () => {
       const settings = getDefaultSettings('linux');
-      expect(settings.botLevel).toBe('stockfish');
+      expect(settings.botLevel).toBe('1100');
       expect(settings.blunderGuardEnabled).toBe(true);
       expect(settings.soundEnabled).toBe(true);
       expect(settings.vocabularyStyle).toBe('debutant');

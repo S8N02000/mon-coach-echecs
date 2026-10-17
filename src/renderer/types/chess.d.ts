@@ -1,4 +1,6 @@
-export type BotLevel = '1100' | '1300' | '1500' | 'stockfish';
+import { Key } from 'chessground/types';
+
+export type BotLevel = '1100' | '1300' | '1500' | '1700' | '1900' | '2100' | 'stockfish';
 export type VocabularyStyle = 'debutant' | 'club';
 export type PlayerColor = 'white' | 'black' | 'random';
 
@@ -8,6 +10,18 @@ export interface EvalResult {
   bestMove: string;
   refutationLineUci: string;
   depth: number;
+}
+
+export interface MoveHistoryItem {
+  san: string;
+  fen: string;
+  from?: Key;
+  to?: Key;
+  eval?: EvalResult;
+  scoreDisplay?: string;
+  numericScore?: number;
+  delta?: number;
+  quality?: 'blunder' | 'mistake' | 'inaccuracy' | 'good' | 'normal';
 }
 
 export interface TacticalStep {
@@ -74,6 +88,30 @@ export interface GpuInfo {
   hasDedicatedGpu: boolean;
 }
 
+export type MaiaModelId = '5m' | '23m' | '79m';
+
+export interface MaiaModelProfile {
+  id: MaiaModelId;
+  name: string;
+  subName: string;
+  badge: string;
+  sizeMb: number;
+  description: string;
+  recommendedFor: string;
+  isDownloaded: boolean;
+  isActive: boolean;
+  isRecommended: boolean;
+}
+
+export interface MaiaDownloadProgress {
+  model: MaiaModelId;
+  progress: number;
+  downloadedMb: number;
+  totalMb: number;
+  status: 'downloading' | 'completed' | 'error';
+  error?: string;
+}
+
 export interface SystemStatus {
   gpu: GpuInfo;
   ollama: {
@@ -86,11 +124,15 @@ export interface SystemStatus {
   engines: {
     stockfish: boolean;
     lc0: boolean;
-    maiaWeights: {
-      '1100': boolean;
-      '1300': boolean;
-      '1500': boolean;
-    };
+    maia3?: boolean;
+    activeEngineType?: 'maia3' | 'lc0' | 'stockfish';
+    maiaWeights: Record<string, boolean>;
+  };
+  maia3Info?: {
+    available: boolean;
+    activeModel: MaiaModelId;
+    recommendedModel: MaiaModelId;
+    profiles: MaiaModelProfile[];
   };
 }
 
@@ -149,6 +191,9 @@ export interface ChessAPI {
   setOllamaModel(model: string): Promise<{ success: boolean }>;
   exportPgnFile(pgn: string, defaultName?: string): Promise<{ success: boolean; filePath?: string }>;
   getProgressiveCoachData(fen: string, playerColor: 'white' | 'black'): Promise<ProgressiveCoachResult>;
+  setMaiaModel?(model: MaiaModelId): Promise<{ success: boolean; error?: string }>;
+  downloadMaiaModel?(model: MaiaModelId): Promise<{ success: boolean; error?: string }>;
+  onMaiaDownloadProgress?(callback: (data: MaiaDownloadProgress) => void): () => void;
 }
 
 declare global {

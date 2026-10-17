@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   X,
   Cpu,
@@ -10,8 +10,10 @@ import {
   Zap,
   HardDrive,
   Check,
+  Brain,
+  Download,
 } from 'lucide-react';
-import { SystemStatus } from '../types/chess';
+import { MaiaModelId, SystemStatus } from '../types/chess';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -19,6 +21,7 @@ interface SettingsModalProps {
   status: SystemStatus | null;
   onRefreshStatus: () => void;
   onSelectModel: (model: string) => void;
+  onSelectMaiaModel?: (model: MaiaModelId) => void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -27,15 +30,61 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   status,
   onRefreshStatus,
   onSelectModel,
+  onSelectMaiaModel,
 }) => {
+  const [downloadingModel, setDownloadingModel] = useState<string | null>(null);
+  const [downloadProgress, setDownloadProgress] = useState<number>(0);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (window.chessAPI?.onMaiaDownloadProgress) {
+      const unsub = window.chessAPI.onMaiaDownloadProgress((data) => {
+        if (data.status === 'downloading') {
+          setDownloadingModel(data.model);
+          setDownloadProgress(data.progress);
+        } else if (data.status === 'completed') {
+          setDownloadingModel(null);
+          setDownloadProgress(100);
+          onRefreshStatus();
+        } else if (data.status === 'error') {
+          setDownloadingModel(null);
+          setDownloadError(data.error || 'Erreur lors du téléchargement');
+        }
+      });
+      return unsub;
+    }
+  }, [onRefreshStatus]);
+
   if (!isOpen) return null;
 
   const gpu = status?.gpu;
   const ollama = status?.ollama;
   const engines = status?.engines;
+  const maia3Info = status?.maia3Info;
   const installedList = ollama?.installedModelDetails || [];
   const recommendedList = ollama?.recommendedCatalog || [];
   const selectedModel = ollama?.selectedModel || 'deepseek-r1:8b';
+  const maiaProfiles = maia3Info?.profiles || [];
+
+  const handleDownloadModel = async (modelId: MaiaModelId) => {
+    setDownloadingModel(modelId);
+    setDownloadProgress(0);
+    setDownloadError(null);
+    try {
+      if (window.chessAPI?.downloadMaiaModel) {
+        const res = await window.chessAPI.downloadMaiaModel(modelId);
+        if (!res.success) {
+          setDownloadError(res.error || 'Erreur de téléchargement');
+          setDownloadingModel(null);
+        } else {
+          onRefreshStatus();
+        }
+      }
+    } catch (err: any) {
+      setDownloadError(err?.message || 'Erreur');
+      setDownloadingModel(null);
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
@@ -51,7 +100,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 Configuration de l'IA & Moteurs d'Échecs
               </h3>
               <p className="text-zinc-400 text-[11px]">
-                Gestion des modèles Ollama (GPU/VRAM) et des moteurs UCI
+                Gestion des modèles Ollama (GPU/VRAM) et des profils Maia 3 (IA Humaine)
               </p>
             </div>
           </div>
@@ -94,12 +143,102 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </div>
         </div>
 
-        {/* 2. Modèles Ollama Installés (Sélection en 1 Clic) */}
+        {/* 2. Profils de Réalisme Humain (Maia 3 Chessformer) */}
+        {maiaProfiles.length > 0 && (
+          <div className="flex flex-col gap-2.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-xs font-semibold text-zinc-200">
+                <Brain className="w-4 h-4 text-pink-400" />
+                <span>Profil de Réalisme Humain (Maia 3)</span>
+              </div>
+              <span className="text-[10px] text-zinc-400 font-mono">
+                Simulation de psychologie humaine
+              </span>
+            </div>
+
+            {downloadError && (
+              <div className="p-2 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-1.5">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                <span>{downloadError}</span>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              {maiaProfiles.map((p) => {
+                const isDownloading = downloadingModel === p.id;
+                return (
+                  <div
+                    key={p.id}
+                    className={`p-3 rounded-xl border flex flex-col justify-between transition-all ${
+                      p.isActive
+                        ? 'bg-indigo-950/40 border-indigo-500/80 shadow-md ring-1 ring-indigo-500/50'
+                        : 'bg-zinc-950/60 border-zinc-800 hover:border-zinc-700'
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-start justify-between gap-1 mb-1">
+                        <span className="text-xs font-bold text-zinc-100">{p.name}</span>
+                        {p.isRecommended && (
+                          <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[9px] font-semibold border border-emerald-500/30 shrink-0">
+                            Optimal
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[10px] text-indigo-400 font-mono mb-1.5">
+                        {p.subName} • {p.sizeMb} Mo
+                      </div>
+                      <p className="text-[11px] text-zinc-400 leading-snug mb-3">
+                        {p.description}
+                      </p>
+                    </div>
+
+                    <div className="pt-2 border-t border-zinc-800/80">
+                      {isDownloading ? (
+                        <div className="flex flex-col gap-1">
+                          <div className="flex justify-between text-[10px] text-zinc-300 font-mono">
+                            <span>Téléchargement...</span>
+                            <span>{downloadProgress}%</span>
+                          </div>
+                          <div className="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-gradient-to-r from-indigo-500 to-pink-500 transition-all duration-150"
+                              style={{ width: `${downloadProgress}%` }}
+                            />
+                          </div>
+                        </div>
+                      ) : p.isActive ? (
+                        <div className="flex items-center justify-center gap-1 py-1 px-2.5 rounded-lg bg-indigo-600/30 border border-indigo-500/50 text-indigo-200 text-xs font-semibold">
+                          <Check className="w-3.5 h-3.5" /> Modèle Actif
+                        </div>
+                      ) : p.isDownloaded ? (
+                        <button
+                          onClick={() => onSelectMaiaModel && onSelectMaiaModel(p.id)}
+                          className="w-full py-1 px-2.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 hover:text-white text-xs font-medium transition-all"
+                        >
+                          Activer
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handleDownloadModel(p.id)}
+                          className="w-full py-1 px-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium transition-all flex items-center justify-center gap-1 shadow-sm"
+                        >
+                          <Download className="w-3.5 h-3.5" /> Télécharger ({p.sizeMb} Mo)
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* 3. Modèles Ollama Installés (Sélection en 1 Clic) */}
         <div className="flex flex-col gap-2.5">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-xs font-semibold text-zinc-200">
               <Server className="w-4 h-4 text-violet-400" />
-              <span>Modèles IA Installés dans Ollama</span>
+              <span>Coach Conversationnel dans Ollama</span>
             </div>
             {ollama?.online ? (
               <span className="flex items-center gap-1 text-[11px] text-emerald-400 font-medium">
@@ -119,47 +258,44 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 : 'Ollama est hors ligne. Lancez "ollama serve" dans un terminal puis cliquez sur Actualiser.'}
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {installedList.map((m) => {
                 const isSelected = selectedModel === m.name;
                 return (
                   <div
                     key={m.name}
                     onClick={() => onSelectModel(m.name)}
-                    className={`p-3 rounded-xl border cursor-pointer transition-all flex flex-col justify-between gap-2 ${
+                    className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer transition-all ${
                       isSelected
-                        ? 'bg-indigo-600/20 border-indigo-500/80 shadow-md ring-1 ring-indigo-500/50'
-                        : 'bg-zinc-950/60 border-zinc-800 hover:border-zinc-700 hover:bg-zinc-900/60'
+                        ? 'bg-indigo-600/15 border-indigo-500/80 text-white shadow-md ring-1 ring-indigo-500/40'
+                        : 'bg-zinc-950/60 border-zinc-800 text-zinc-300 hover:border-zinc-700 hover:bg-zinc-900/60'
                     }`}
                   >
-                    <div className="flex items-start justify-between gap-1">
-                      <div>
-                        <div className="text-xs font-bold text-zinc-200 flex items-center gap-1.5">
-                          {m.name}
-                          {isSelected && (
-                            <span className="px-1.5 py-0.2 rounded text-[9px] bg-indigo-500 text-white font-semibold">
-                              ACTIF
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-[10px] text-zinc-400 mt-0.5">
-                          Taille : {m.sizeFormatted} • {m.parameterSize || 'Quantifié'}
-                        </div>
-                      </div>
-                      <div className="p-1 rounded-full bg-zinc-800 text-zinc-400">
-                        {isSelected ? (
-                          <Check className="w-3.5 h-3.5 text-indigo-400" />
-                        ) : (
-                          <HardDrive className="w-3.5 h-3.5 text-zinc-500" />
+                    <div className="flex flex-col gap-0.5">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-semibold text-xs text-zinc-100">{m.displayName}</span>
+                        {isSelected && (
+                          <span className="text-[10px] px-1.5 py-0.2 rounded bg-indigo-500/20 text-indigo-300 font-medium border border-indigo-500/30">
+                            Actif
+                          </span>
                         )}
                       </div>
+                      <span className="text-[11px] text-zinc-400">
+                        {m.parameterSize} • {m.sizeFormatted}
+                      </span>
                     </div>
 
-                    <div className="flex items-center justify-between text-[10px] pt-1 border-t border-zinc-800/60">
-                      <span className={m.fitsVram ? 'text-emerald-400' : 'text-amber-400'}>
-                        {m.fitsVram ? '✓ Compatible VRAM' : '⚠ VRAM limite'}
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400 font-mono">
+                        {m.badge}
                       </span>
-                      <span className="text-zinc-500">{m.badge}</span>
+                      {isSelected ? (
+                        <div className="w-5 h-5 rounded-full bg-indigo-600 flex items-center justify-center text-white">
+                          <Check className="w-3 h-3" />
+                        </div>
+                      ) : (
+                        <div className="w-5 h-5 rounded-full border border-zinc-700" />
+                      )}
                     </div>
                   </div>
                 );
@@ -168,30 +304,34 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           )}
         </div>
 
-        {/* 3. Catalogue Préconisé selon votre VRAM */}
+        {/* 4. Catalogue Recommandé Ollama */}
         <div className="flex flex-col gap-2.5">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-xs font-semibold text-zinc-200">
-              <Sparkles className="w-4 h-4 text-amber-400" />
-              <span>Modèles Recommandés selon votre matériel</span>
+              <Sparkles className="w-4 h-4 text-indigo-400" />
+              <span>Modèles Recommandés pour votre PC</span>
             </div>
-            <span className="text-[10px] text-zinc-500">Optimisés pour le Coach d'échecs</span>
+            <span className="text-[11px] text-zinc-500">100% Gratuits & Locaux</span>
           </div>
 
-          <div className="space-y-1.5">
+          <div className="flex flex-col gap-2">
             {recommendedList.map((rec) => {
-              const alreadyInstalled = installedList.some((inst) => inst.name === rec.name);
+              const alreadyInstalled = installedList.some((m) => m.name === rec.name);
               return (
                 <div
                   key={rec.name}
-                  className="bg-zinc-950/70 border border-zinc-800/80 rounded-xl p-3 flex items-center justify-between gap-3 text-xs"
+                  className="flex items-center justify-between p-3 rounded-xl bg-zinc-950/60 border border-zinc-800/80 hover:border-zinc-700/80 transition-colors"
                 >
-                  <div className="flex-1">
+                  <div className="flex flex-col">
                     <div className="flex items-center gap-2">
-                      <span className="font-semibold text-zinc-200">{rec.displayName}</span>
-                      <span className="text-[10px] text-zinc-400">({rec.sizeFormatted} VRAM)</span>
+                      <span className="text-xs font-semibold text-zinc-200">
+                        {rec.displayName}
+                      </span>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 font-mono">
+                        {rec.parameterSize}
+                      </span>
                       {rec.isRecommended && (
-                        <span className="px-1.5 py-0.5 rounded text-[9px] bg-amber-500/20 text-amber-300 border border-amber-500/30 font-semibold">
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium">
                           Recommandé
                         </span>
                       )}
@@ -223,66 +363,65 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </div>
         </div>
 
-        {/* 4. Moteurs d'Échecs UCI (Stockfish & Maia) */}
+        {/* 5. Statut Moteurs d'Échecs UCI */}
         <div className="bg-zinc-950/80 border border-zinc-800/80 rounded-xl p-3.5 flex flex-col gap-2.5">
-          <div className="flex items-center gap-2 text-xs font-semibold text-zinc-200">
-            <Cpu className="w-4 h-4 text-indigo-400" />
-            <span>Moteurs d'Échecs UCI (Calculs CPU 100% Natifs)</span>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-xs font-semibold text-zinc-200">
+              <Cpu className="w-4 h-4 text-indigo-400" />
+              <span>Moteurs d'Échecs UCI & Détection</span>
+            </div>
+            {engines?.activeEngineType && (
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 font-mono font-medium">
+                Moteur actif : {engines.activeEngineType === 'maia3' ? 'Maia 3 (GPU)' : engines.activeEngineType === 'lc0' ? 'Lc0 (Maia 1)' : 'Stockfish 19'}
+              </span>
+            )}
           </div>
 
-          <div className="grid grid-cols-2 gap-2 text-xs">
-            <div className="flex items-center justify-between p-2 bg-zinc-900/60 rounded-lg border border-zinc-800">
-              <span className="text-zinc-400">Stockfish 19 :</span>
-              {engines?.stockfish ? (
-                <span className="text-emerald-400 font-medium flex items-center gap-1">
+          <div className="grid grid-cols-3 gap-2 text-xs">
+            <div className="flex flex-col p-2 bg-zinc-900/60 rounded-lg border border-zinc-800 gap-1">
+              <span className="text-zinc-400 text-[11px]">Maia 3 :</span>
+              {engines?.maia3 ? (
+                <span className="text-emerald-400 font-medium flex items-center gap-1 text-[11px]">
                   <CheckCircle2 className="w-3 h-3" /> Opérationnel
                 </span>
               ) : (
-                <span className="text-amber-400 font-medium flex items-center gap-1">
+                <span className="text-zinc-500 font-medium flex items-center gap-1 text-[11px]">
+                  <AlertCircle className="w-3 h-3" /> Non installé
+                </span>
+              )}
+            </div>
+
+            <div className="flex flex-col p-2 bg-zinc-900/60 rounded-lg border border-zinc-800 gap-1">
+              <span className="text-zinc-400 text-[11px]">Leela Chess (Lc0) :</span>
+              {engines?.lc0 ? (
+                <span className="text-emerald-400 font-medium flex items-center gap-1 text-[11px]">
+                  <CheckCircle2 className="w-3 h-3" /> Opérationnel
+                </span>
+              ) : (
+                <span className="text-zinc-500 font-medium text-[11px]">
+                  Non détecté
+                </span>
+              )}
+            </div>
+
+            <div className="flex flex-col p-2 bg-zinc-900/60 rounded-lg border border-zinc-800 gap-1">
+              <span className="text-zinc-400 text-[11px]">Stockfish 19 :</span>
+              {engines?.stockfish ? (
+                <span className="text-emerald-400 font-medium flex items-center gap-1 text-[11px]">
+                  <CheckCircle2 className="w-3 h-3" /> Opérationnel
+                </span>
+              ) : (
+                <span className="text-amber-400 font-medium flex items-center gap-1 text-[11px]">
                   <AlertCircle className="w-3 h-3" /> Absent
                 </span>
               )}
-            </div>
-
-            <div className="flex items-center justify-between p-2 bg-zinc-900/60 rounded-lg border border-zinc-800">
-              <span className="text-zinc-400">Leela (Lc0) :</span>
-              {engines?.lc0 ? (
-                <span className="text-emerald-400 font-medium flex items-center gap-1">
-                  <CheckCircle2 className="w-3 h-3" /> Opérationnel
-                </span>
-              ) : (
-                <span className="text-zinc-400 font-medium">
-                  Simulation Elo (Stockfish)
-                </span>
-              )}
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between pt-1 text-xs">
-            <span className="text-zinc-400">Réseaux Maia disponibles :</span>
-            <div className="flex gap-1.5">
-              {(['1100', '1300', '1500'] as const).map((w) => {
-                const isLoaded = Boolean(engines?.maiaWeights?.[w]);
-                return (
-                  <span
-                    key={w}
-                    className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${
-                      isLoaded
-                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                        : 'bg-zinc-800 text-zinc-500'
-                    }`}
-                  >
-                    Maia {w}
-                  </span>
-                );
-              })}
             </div>
           </div>
         </div>
 
         {/* Footer */}
         <div className="text-[11px] text-zinc-500 text-center">
-          Mon Coach Échecs • Détection VRAM & Inférence 100% Locale
+          Mon Coach Échecs • Détection Matérielle & Inférence 100% Locale
         </div>
       </div>
     </div>

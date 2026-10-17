@@ -1,5 +1,13 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import { BotLevel, CoachPayload, CoachResponse, EvalResult, SystemStatus } from '../renderer/types/chess';
+import {
+  BotLevel,
+  CoachPayload,
+  CoachResponse,
+  EvalResult,
+  MaiaDownloadProgress,
+  MaiaModelId,
+  SystemStatus,
+} from '../renderer/types/chess';
 
 const chessAPI = {
   platform: process.platform,
@@ -28,6 +36,22 @@ const chessAPI = {
     return ipcRenderer.invoke('chess:set-ollama-model', model);
   },
 
+  setMaiaModel: (model: MaiaModelId): Promise<{ success: boolean; error?: string }> => {
+    return ipcRenderer.invoke('chess:set-maia-model', model);
+  },
+
+  downloadMaiaModel: (model: MaiaModelId): Promise<{ success: boolean; error?: string }> => {
+    return ipcRenderer.invoke('chess:download-maia-model', model);
+  },
+
+  onMaiaDownloadProgress: (callback: (data: MaiaDownloadProgress) => void): (() => void) => {
+    const handler = (_: any, data: MaiaDownloadProgress) => callback(data);
+    ipcRenderer.on('chess:maia-download-progress', handler);
+    return () => {
+      ipcRenderer.removeListener('chess:maia-download-progress', handler);
+    };
+  },
+
   exportPgnFile: (pgn: string, defaultName?: string): Promise<{ success: boolean; filePath?: string }> => {
     return ipcRenderer.invoke('chess:export-pgn', pgn, defaultName);
   },
@@ -38,3 +62,4 @@ const chessAPI = {
 };
 
 contextBridge.exposeInMainWorld('chessAPI', chessAPI);
+

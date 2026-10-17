@@ -12,13 +12,19 @@ export interface UserSettings {
   playerColor: PlayerColor;
   boardOrientation: 'white' | 'black';
   selectedOllamaModel?: string;
+  selectedMaiaModel?: '5m' | '23m' | '79m';
 }
 
 export interface SavedGameMove {
   san: string;
   fen: string;
-  from: Key;
-  to: Key;
+  from?: Key;
+  to?: Key;
+  eval?: EvalResult;
+  scoreDisplay?: string;
+  numericScore?: number;
+  delta?: number;
+  quality?: 'blunder' | 'mistake' | 'inaccuracy' | 'good' | 'normal';
 }
 
 export interface SavedGameSession {
@@ -34,12 +40,8 @@ export interface SavedGameSession {
 }
 
 export function getDefaultSettings(platform?: string): UserSettings {
-  const isLinux =
-    platform === 'linux' ||
-    (typeof window !== 'undefined' && window.chessAPI?.platform === 'linux');
-
   return {
-    botLevel: isLinux ? 'stockfish' : '1100',
+    botLevel: '1100',
     blunderGuardEnabled: true,
     soundEnabled: true,
     vocabularyStyle: 'debutant',
@@ -59,10 +61,12 @@ export function loadUserSettings(platform?: string): UserSettings {
     if (!raw) return defaults;
     const parsed = JSON.parse(raw);
 
-    const validLevels: BotLevel[] = ['1100', '1300', '1500', 'stockfish'];
+    const validLevels: BotLevel[] = ['1100', '1300', '1500', '1700', '1900', '2100', 'stockfish'];
     const validColors: PlayerColor[] = ['white', 'black', 'random'];
     const validOrientations: ('white' | 'black')[] = ['white', 'black'];
     const validStyles: VocabularyStyle[] = ['debutant', 'club'];
+
+    const validMaiaModels: ('5m' | '23m' | '79m')[] = ['5m', '23m', '79m'];
 
     return {
       botLevel: validLevels.includes(parsed.botLevel) ? parsed.botLevel : defaults.botLevel,
@@ -72,6 +76,7 @@ export function loadUserSettings(platform?: string): UserSettings {
       playerColor: validColors.includes(parsed.playerColor) ? parsed.playerColor : defaults.playerColor,
       boardOrientation: validOrientations.includes(parsed.boardOrientation) ? parsed.boardOrientation : defaults.boardOrientation,
       selectedOllamaModel: typeof parsed.selectedOllamaModel === 'string' ? parsed.selectedOllamaModel : undefined,
+      selectedMaiaModel: validMaiaModels.includes(parsed.selectedMaiaModel) ? parsed.selectedMaiaModel : undefined,
     };
   } catch (err) {
     console.warn('[Storage] Failed to read user settings from localStorage:', err);

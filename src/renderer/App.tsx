@@ -47,6 +47,9 @@ export const App: React.FC = () => {
     if (saved.selectedOllamaModel && window.chessAPI?.setOllamaModel) {
       window.chessAPI.setOllamaModel(saved.selectedOllamaModel).catch(() => {});
     }
+    if (saved.selectedMaiaModel && window.chessAPI?.setMaiaModel) {
+      window.chessAPI.setMaiaModel(saved.selectedMaiaModel).catch(() => {});
+    }
 
     // Rafraîchissement périodique toutes les 3.5s pour détecter Ollama en direct
     const interval = setInterval(() => {
@@ -69,17 +72,22 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleSelectMaiaModel = async (model: any) => {
+    if (window.chessAPI?.setMaiaModel) {
+      await window.chessAPI.setMaiaModel(model);
+      saveUserSettings({ selectedMaiaModel: model });
+      refreshStatus();
+    }
+  };
+
   const isOllamaOnline = Boolean(systemStatus?.ollama?.online);
   const activeModel = systemStatus?.ollama?.selectedModel || 'deepseek-r1';
   const gpuName = systemStatus?.gpu?.name;
   const totalVramGb = systemStatus?.gpu?.totalVramGb;
-  const isLinux = typeof window !== 'undefined' && window.chessAPI?.platform === 'linux';
   const botDisplayName =
     game.botLevel === 'stockfish'
       ? 'Stockfish (Maître)'
-      : isLinux
-      ? `Stockfish (${game.botLevel})`
-      : `Maia Chess (${game.botLevel})`;
+      : `Maia (${game.botLevel})`;
 
   return (
     <div className="flex flex-col h-screen w-screen bg-zinc-950 text-zinc-100 select-none overflow-hidden">
@@ -264,8 +272,13 @@ export const App: React.FC = () => {
                 lastMove={
                   progressiveCoach.simulationActive
                     ? undefined
-                    : game.history.length > 0
-                    ? [game.history[game.history.length - 1].from, game.history[game.history.length - 1].to]
+                    : game.history.length > 0 &&
+                      game.history[game.history.length - 1].from &&
+                      game.history[game.history.length - 1].to
+                    ? [
+                        game.history[game.history.length - 1].from!,
+                        game.history[game.history.length - 1].to!,
+                      ]
                     : undefined
                 }
                 onMove={progressiveCoach.simulationActive ? () => {} : game.handleHumanMove}
@@ -336,6 +349,8 @@ export const App: React.FC = () => {
           {/* Contrôles du jeu et niveau du bot */}
           <GameControls
             botLevel={game.botLevel}
+            activeEngineType={systemStatus?.engines?.activeEngineType}
+            activeMaiaBadge={systemStatus?.maia3Info?.profiles?.find((p) => p.isActive)?.badge}
             onSetBotLevel={game.handleSetBotLevel}
             playerColor={game.playerColor}
             onSetPlayerColor={(c) => {
@@ -391,6 +406,7 @@ export const App: React.FC = () => {
         status={systemStatus}
         onRefreshStatus={refreshStatus}
         onSelectModel={handleSelectModel}
+        onSelectMaiaModel={handleSelectMaiaModel}
       />
     </div>
   );
