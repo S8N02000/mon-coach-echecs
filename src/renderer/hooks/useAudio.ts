@@ -88,20 +88,32 @@ export function useAudio(enabled = true) {
       const ctx = getContext();
       if (!ctx) return;
       const now = ctx.currentTime;
-      // Minor third dissonance for blunder warning
-      [350, 310].forEach((freq) => {
+      // Double note feutrée descendante (type marimba doux / bulle d'eau zen)
+      // Première note : 440 Hz (La4), deuxième note : 330 Hz (Mi4)
+      const notes = [
+        { freq: 440, time: now, gain: 0.18 },
+        { freq: 330, time: now + 0.11, gain: 0.16 },
+      ];
+
+      notes.forEach(({ freq, time, gain: noteGain }) => {
         const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = 'sawtooth';
-        osc.frequency.setValueAtTime(freq, now);
+        const gainNode = ctx.createGain();
 
-        gain.gain.setValueAtTime(0.25, now);
-        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
+        // Onde sinusoïdale pure et ronde (douce et sans agressivité)
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, time);
+        // Légère inflexion organique douce
+        osc.frequency.exponentialRampToValueAtTime(freq * 0.92, time + 0.22);
 
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.start(now);
-        osc.stop(now + 0.35);
+        // Attaque douce (0.015s) pour éviter tout claquement sec, puis déclin feutré
+        gainNode.gain.setValueAtTime(0.001, time);
+        gainNode.gain.linearRampToValueAtTime(noteGain, time + 0.015);
+        gainNode.gain.exponentialRampToValueAtTime(0.001, time + 0.24);
+
+        osc.connect(gainNode);
+        gainNode.connect(ctx.destination);
+        osc.start(time);
+        osc.stop(time + 0.25);
       });
     } catch (_) {}
   }, [enabled, getContext]);

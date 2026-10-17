@@ -1,8 +1,9 @@
 import React, { useEffect, useRef } from 'react';
 import { ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight, RotateCcw } from 'lucide-react';
+import { MoveHistoryItem } from '../types/chess';
 
 interface MoveHistoryProps {
-  history: { san: string; fen: string }[];
+  history: MoveHistoryItem[];
   currentMoveIndex: number; // -1 pour la position initiale
   onJumpToMove: (index: number) => void;
   onUndo: () => void;
@@ -12,6 +13,114 @@ interface MoveHistoryProps {
   resultDisplay?: string;
   resultReason?: string;
 }
+
+interface MoveEntryProps {
+  item: MoveHistoryItem;
+  index: number;
+  isCurrent: boolean;
+  onSelect: (index: number) => void;
+  moveNumber: number;
+  colorName: string;
+}
+
+const MoveEntryButton: React.FC<MoveEntryProps> = ({
+  item,
+  index,
+  isCurrent,
+  onSelect,
+  moveNumber,
+  colorName,
+}) => {
+  const isBlunder = item.quality === 'blunder' || (item.delta !== undefined && item.delta <= -2.0);
+  const isMistake = !isBlunder && (item.quality === 'mistake' || (item.delta !== undefined && item.delta <= -0.8));
+  const isInaccuracy = !isBlunder && !isMistake && (item.quality === 'inaccuracy' || (item.delta !== undefined && item.delta <= -0.4));
+  const isGood = !isBlunder && !isMistake && !isInaccuracy && (item.quality === 'good' || (item.delta !== undefined && item.delta >= 0.6));
+
+  const deltaStr =
+    item.delta !== undefined
+      ? item.delta > 0
+        ? `+${item.delta.toFixed(1)}`
+        : item.delta.toFixed(1)
+      : undefined;
+
+  let tooltip = `Coup ${moveNumber} (${colorName}) : ${item.san}`;
+  if (item.scoreDisplay) {
+    tooltip += ` • Score : ${item.scoreDisplay}`;
+  }
+  if (deltaStr) {
+    tooltip += ` (${deltaStr} pts)`;
+  }
+  if (isBlunder) tooltip += ' ⚠️ Gaffe majeure !';
+  else if (isMistake) tooltip += ' ⚠️ Erreur tactique';
+  else if (isInaccuracy) tooltip += ' ⚠️ Imprécision';
+  else if (isGood) tooltip += ' ✨ Excellent coup';
+
+  return (
+    <button
+      onClick={() => onSelect(index)}
+      title={tooltip}
+      className={`group flex items-center justify-between py-1 px-1.5 rounded-lg transition-all text-xs font-mono w-full ${
+        isCurrent
+          ? 'bg-indigo-600 text-white font-bold shadow-md ring-1 ring-indigo-400/50'
+          : 'text-zinc-200 hover:text-white hover:bg-zinc-800/80'
+      }`}
+    >
+      <span className="font-semibold tracking-tight">{item.san}</span>
+
+      {/* Badge score & indicateur d'évaluation */}
+      {item.scoreDisplay && (
+        <span className="flex items-center gap-1 shrink-0 text-[10px]">
+          {isBlunder ? (
+            <span
+              className={`inline-flex items-center gap-0.5 px-1 py-0.2 rounded font-bold ${
+                isCurrent
+                  ? 'bg-rose-950/80 text-rose-200 border border-rose-400/50'
+                  : 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
+              }`}
+            >
+              <span>{item.scoreDisplay}</span>
+              <span className="text-[9px] font-black text-rose-400">🔴</span>
+            </span>
+          ) : isMistake ? (
+            <span
+              className={`inline-flex items-center gap-0.5 px-1 py-0.2 rounded font-medium ${
+                isCurrent
+                  ? 'bg-amber-950/80 text-amber-200 border border-amber-400/50'
+                  : 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+              }`}
+            >
+              <span>{item.scoreDisplay}</span>
+              <span className="text-[9px] font-bold text-amber-400">?</span>
+            </span>
+          ) : isInaccuracy ? (
+            <span
+              className={`inline-flex items-center gap-0.5 px-1 py-0.2 rounded ${
+                isCurrent
+                  ? 'bg-yellow-950/80 text-yellow-200 border border-yellow-400/40'
+                  : 'bg-yellow-500/10 text-yellow-300 border border-yellow-500/30'
+              }`}
+            >
+              <span>{item.scoreDisplay}</span>
+              <span className="text-[9px] text-yellow-400">?!</span>
+            </span>
+          ) : (
+            <span
+              className={`font-mono transition-colors ${
+                isCurrent
+                  ? 'text-indigo-200'
+                  : isGood
+                  ? 'text-emerald-400 font-medium'
+                  : 'text-zinc-400 group-hover:text-zinc-300'
+              }`}
+            >
+              ({item.scoreDisplay})
+            </span>
+          )}
+        </span>
+      )}
+    </button>
+  );
+};
 
 export const MoveHistory: React.FC<MoveHistoryProps> = ({
   history,
@@ -27,12 +136,17 @@ export const MoveHistory: React.FC<MoveHistoryProps> = ({
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Regroupement des coups par paire (Blancs / Noirs)
-  const movePairs: { num: number; white?: { san: string; index: number }; black?: { san: string; index: number } }[] = [];
+  const movePairs: {
+    num: number;
+    white?: { item: MoveHistoryItem; index: number };
+    black?: { item: MoveHistoryItem; index: number };
+  }[] = [];
+
   for (let i = 0; i < history.length; i += 2) {
     movePairs.push({
       num: Math.floor(i / 2) + 1,
-      white: { san: history[i].san, index: i },
-      black: history[i + 1] ? { san: history[i + 1].san, index: i + 1 } : undefined,
+      white: history[i] ? { item: history[i], index: i } : undefined,
+      black: history[i + 1] ? { item: history[i + 1], index: i + 1 } : undefined,
     });
   }
 
@@ -46,13 +160,15 @@ export const MoveHistory: React.FC<MoveHistoryProps> = ({
   return (
     <div className="w-full bg-zinc-900/90 border border-zinc-800 rounded-2xl p-4 shadow-xl flex flex-col flex-1 min-h-[220px]">
       <div className="flex items-center justify-between border-b border-zinc-800/80 pb-2.5 mb-2">
-        <h3 className="font-semibold text-zinc-100 text-sm">Historique des Coups</h3>
+        <div className="flex items-center gap-2">
+          <h3 className="font-semibold text-zinc-100 text-sm">Historique des Coups</h3>
+        </div>
         <span className="text-[11px] text-zinc-400 font-mono">
           {history.length} demi-coups
         </span>
       </div>
 
-      {/* Liste déroulante des coups */}
+      {/* Liste déroulante des coups avec scores et variations */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto max-h-[200px] pr-1 space-y-1 text-xs">
         {movePairs.length === 0 ? (
           <div className="text-center py-8 text-zinc-500 italic">
@@ -62,35 +178,39 @@ export const MoveHistory: React.FC<MoveHistoryProps> = ({
           movePairs.map((pair) => (
             <div
               key={pair.num}
-              className="grid grid-cols-12 gap-1 py-1 px-2 rounded-lg hover:bg-zinc-800/50 transition-colors items-center"
+              className="grid grid-cols-12 gap-1 py-0.5 px-1.5 rounded-lg hover:bg-zinc-800/40 transition-colors items-center"
             >
-              <span className="col-span-2 text-zinc-500 font-mono text-[11px]">
+              <span className="col-span-2 text-zinc-500 font-mono text-[11px] font-medium">
                 {pair.num}.
               </span>
-              <button
-                onClick={() => pair.white && onJumpToMove(pair.white.index)}
-                className={`col-span-5 text-left py-0.5 px-1.5 rounded transition-all font-mono ${
-                  currentMoveIndex === pair.white?.index
-                    ? 'bg-indigo-600 text-white font-bold shadow-sm'
-                    : 'text-zinc-200 hover:text-white hover:bg-zinc-700/60'
-                }`}
-              >
-                {pair.white?.san}
-              </button>
-              {pair.black ? (
-                <button
-                  onClick={() => onJumpToMove(pair.black!.index)}
-                  className={`col-span-5 text-left py-0.5 px-1.5 rounded transition-all font-mono ${
-                    currentMoveIndex === pair.black.index
-                      ? 'bg-indigo-600 text-white font-bold shadow-sm'
-                      : 'text-zinc-200 hover:text-white hover:bg-zinc-700/60'
-                  }`}
-                >
-                  {pair.black.san}
-                </button>
-              ) : (
-                <span className="col-span-5" />
-              )}
+
+              <div className="col-span-5 min-w-0">
+                {pair.white && (
+                  <MoveEntryButton
+                    item={pair.white.item}
+                    index={pair.white.index}
+                    isCurrent={currentMoveIndex === pair.white.index}
+                    onSelect={onJumpToMove}
+                    moveNumber={pair.num}
+                    colorName="Blancs"
+                  />
+                )}
+              </div>
+
+              <div className="col-span-5 min-w-0">
+                {pair.black ? (
+                  <MoveEntryButton
+                    item={pair.black.item}
+                    index={pair.black.index}
+                    isCurrent={currentMoveIndex === pair.black.index}
+                    onSelect={onJumpToMove}
+                    moveNumber={pair.num}
+                    colorName="Noirs"
+                  />
+                ) : (
+                  <span className="block" />
+                )}
+              </div>
             </div>
           ))
         )}

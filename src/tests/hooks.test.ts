@@ -234,22 +234,26 @@ describe('Renderer Hooks', () => {
       expect(result.current.selectedStepIndex).toBeNull();
     });
 
-    it('navigates history with jumpToMove', async () => {
+    it('navigates history with jumpToMove and updates evalResult in live', async () => {
       const { result } = renderHook(() => useChessGame());
 
       await act(async () => {
         result.current.handleHumanMove('e2' as any, 'e4' as any);
       });
 
+      // Jump to initial position -> score resets to +0.2
       act(() => {
         result.current.jumpToMove(-1);
       });
       expect(result.current.currentMoveIndex).toBe(-1);
+      expect(result.current.evalResult.numericScore).toBe(0.2);
 
+      // Jump back to move 0
       act(() => {
         result.current.jumpToMove(0);
       });
       expect(result.current.currentMoveIndex).toBe(0);
+      expect(result.current.fen).toContain('rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR');
     });
 
     it('loads positions via PGN and FEN', () => {
@@ -762,15 +766,20 @@ describe('Renderer Hooks', () => {
       expect(result.current.currentMoveIndex).toBe(-1);
     });
 
-    it('formats bot name in PGN on Linux platform', async () => {
+    it('formats bot name in PGN for Maia and Stockfish', async () => {
       (window as any).chessAPI.platform = 'linux';
       const { result } = renderHook(() => useChessGame());
 
       await act(async () => {
         await result.current.handleSetBotLevel('1300');
       });
+      expect(result.current.pgn).toContain('Maia (1300)');
 
-      expect(result.current.pgn).toContain('Stockfish (1300)');
+      await act(async () => {
+        await result.current.handleSetBotLevel('stockfish');
+      });
+      expect(result.current.pgn).toContain('Stockfish 19 (Maître)');
+
       (window as any).chessAPI.platform = undefined;
     });
 

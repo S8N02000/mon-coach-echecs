@@ -281,6 +281,42 @@ describe('Renderer Components', () => {
       fireEvent.click(screen.getByText(/Reprendre/i));
       expect(onUndo).toHaveBeenCalledTimes(1);
     });
+
+    it('renders move evaluations with score display and blunder badges', () => {
+      const onJumpToMove = vi.fn();
+
+      render(
+        <MoveHistory
+          history={[
+            { san: 'e4', fen: 'fen1', scoreDisplay: '+0.2', quality: 'normal' },
+            { san: 'e5', fen: 'fen2', scoreDisplay: '+0.1', delta: -0.1, quality: 'normal' },
+            { san: 'Qh5', fen: 'fen3', scoreDisplay: '-2.4', delta: -2.5, quality: 'blunder' },
+            { san: 'Nc6', fen: 'fen4', scoreDisplay: '-1.2', delta: -0.9, quality: 'mistake' },
+            { san: 'Bc4', fen: 'fen5', scoreDisplay: '-1.7', delta: -0.5, quality: 'inaccuracy' },
+            { san: 'g6', fen: 'fen6', scoreDisplay: '+1.5', delta: +0.8, quality: 'good' },
+          ]}
+          currentMoveIndex={2}
+          onJumpToMove={onJumpToMove}
+          onUndo={vi.fn()}
+          canUndo={true}
+        />
+      );
+
+      // Vérifie les coups
+      expect(screen.getByText('e4')).toBeDefined();
+      expect(screen.getByText('Qh5')).toBeDefined();
+
+      // Vérifie l'indicateur de gaffe 🔴
+      expect(screen.getByText('🔴')).toBeDefined();
+      // Vérifie l'indicateur d'erreur ?
+      expect(screen.getByText('?')).toBeDefined();
+      // Vérifie l'indicateur d'imprécision ?!
+      expect(screen.getByText('?!')).toBeDefined();
+
+      // Clic sur un coup passé
+      fireEvent.click(screen.getByText('Qh5'));
+      expect(onJumpToMove).toHaveBeenCalledWith(2);
+    });
   });
 
   describe('PgnModal', () => {
@@ -582,7 +618,7 @@ describe('Renderer Components', () => {
       expect(screen.getByText(/DeepSeek-R1 1.5B/i)).toBeDefined();
 
       // Click on installed model card
-      fireEvent.click(screen.getByText('deepseek-r1:8b'));
+      fireEvent.click(screen.getByText(/deepseek-r1:8b/i));
       expect(onSelect).toHaveBeenCalledWith('deepseek-r1:8b');
     });
 
@@ -659,6 +695,18 @@ describe('Renderer Components', () => {
       if (maia1500) {
         fireEvent.click(maia1500);
         expect(onSetBotLevel).toHaveBeenCalledWith('1500');
+      }
+
+      const maia2100 = botButtons.find((b) => b.textContent?.includes('2100'));
+      if (maia2100) {
+        fireEvent.click(maia2100);
+        expect(onSetBotLevel).toHaveBeenCalledWith('2100');
+      }
+
+      const sfBtn = botButtons.find((b) => b.textContent?.includes('Stockfish Grand Maître'));
+      if (sfBtn) {
+        fireEvent.click(sfBtn);
+        expect(onSetBotLevel).toHaveBeenCalledWith('stockfish');
       }
 
       // Change player color

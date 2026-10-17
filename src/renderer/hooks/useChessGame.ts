@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { Chess, Square } from 'chess.js';
 import { Key } from 'chessground/types';
 import { DrawShape } from 'chessground/draw';
-import { BotLevel, PlayerColor, EvalResult, VocabularyStyle, TacticalStep, GameOverState } from '../types/chess';
+import { BotLevel, PlayerColor, EvalResult, VocabularyStyle, TacticalStep, GameOverState, MoveHistoryItem } from '../types/chess';
 import { useAudio } from './useAudio';
 import {
   loadUserSettings,
@@ -23,6 +23,47 @@ export interface BlunderState {
 }
 
 export const DEFAULT_STARTING_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+
+export function computeMoveDetails(
+  evalRes: EvalResult,
+  prevNumericScore: number,
+  moveColor: 'white' | 'black'
+): {
+  scoreDisplay: string;
+  numericScore: number;
+  delta: number;
+  quality: 'blunder' | 'mistake' | 'inaccuracy' | 'good' | 'normal';
+} {
+  const numericScore = evalRes.numericScore;
+  const scoreDisplay =
+    typeof evalRes.score === 'string' && (evalRes.score.startsWith('+M') || evalRes.score.startsWith('-M'))
+      ? evalRes.score
+      : numericScore > 0
+      ? `+${numericScore.toFixed(1)}`
+      : numericScore === 0
+      ? '0.0'
+      : numericScore.toFixed(1);
+
+  // Du point de vue du camp qui a joué le coup :
+  // Si Blanc a joué : delta = numericScore - prevNumericScore
+  // Si Noir a joué : delta = -(numericScore - prevNumericScore)
+  const delta = moveColor === 'white'
+    ? numericScore - prevNumericScore
+    : -(numericScore - prevNumericScore);
+
+  let quality: 'blunder' | 'mistake' | 'inaccuracy' | 'good' | 'normal' = 'normal';
+  if (delta <= -2.0) {
+    quality = 'blunder';
+  } else if (delta <= -0.8) {
+    quality = 'mistake';
+  } else if (delta <= -0.4) {
+    quality = 'inaccuracy';
+  } else if (delta >= 0.6) {
+    quality = 'good';
+  }
+
+  return { scoreDisplay, numericScore, delta, quality };
+}
 
 export function useChessGame() {
   const initialSettings = useMemo(() => loadUserSettings(), []);
@@ -56,8 +97,8 @@ export function useChessGame() {
     savedSession?.startingFen || DEFAULT_STARTING_FEN
   );
   const [fen, setFen] = useState<string>(savedSession?.fen || chess.fen());
-  const [history, setHistory] = useState<{ san: string; fen: string; from: Key; to: Key }[]>(
-    savedSession?.history || []
+  const [history, setHistory] = useState<MoveHistoryItem[]>(
+    (savedSession?.history as MoveHistoryItem[]) || []
   );
   const [currentMoveIndex, setCurrentMoveIndex] = useState<number>(
     savedSession ? savedSession.currentMoveIndex : -1
@@ -358,10 +399,23 @@ export function useChessGame() {
           ]);
           setCurrentMoveIndex((prev) => prev + 1);
 
-          // Update Stockfish eval in background
+          // Update Stockfish eval in background and enrich move history
+          const botColor = actualPlayerColor === 'white' ? 'black' : 'white';
           window.chessAPI.evaluatePosition(newFen, 10).then((res) => {
             setEvalResult(res);
+            const details = computeMoveDetails(res, lastEvalRef.current, botColor);
             lastEvalRef.current = res.numericScore;
+            setHistory((prev) => {
+              if (prev.length === 0) return prev;
+              const copy = [...prev];
+              const lastIdx = copy.length - 1;
+              copy[lastIdx] = {
+                ...copy[lastIdx],
+                eval: res,
+                ...details,
+              };
+              return copy;
+            });
           }).catch(() => {});
         }
       }
@@ -370,7 +424,7 @@ export function useChessGame() {
     } finally {
       setIsBotThinking(false);
     }
-  }, [chess, playMove, playCapture, playCheck, playDefeat]);
+  }, [chess, actualPlayerColor, playMove, playCapture, playCheck, playDefeat]);
 
   // Start new game
   const startNewGame = useCallback((colorChoice: PlayerColor = playerColor) => {
@@ -538,16 +592,41 @@ export function useChessGame() {
     const nextIndex = currentMoveIndex + 1;
     setFen(newFen);
     setGameOverDismissed(false);
+
+    const initialItem: MoveHistoryItem = {
+      san: moveRes.san,
+      fen: newFen,
+      from: moveRes.from as Key,
+      to: moveRes.to as Key,
+      ...(moveEval ? { eval: moveEval, ...computeMoveDetails(moveEval, lastEvalRef.current, actualPlayerColor) } : {}),
+    };
+
     setHistory((prev) => {
       const base = currentMoveIndex >= 0 ? prev.slice(0, currentMoveIndex + 1) : [];
-      return [
-        ...base,
-        { san: moveRes.san, fen: newFen, from: moveRes.from as Key, to: moveRes.to as Key },
-      ];
+      return [...base, initialItem];
     });
     setCurrentMoveIndex(nextIndex);
     setTacticalSteps([]);
     setSelectedStepIndex(null);
+
+    // Si moveEval n'a pas été calculé en amont (ex: garde-gaffe désactivée), l'évaluer en direct
+    if (!moveEval && typeof window !== 'undefined' && window.chessAPI?.evaluatePosition) {
+      window.chessAPI.evaluatePosition(newFen, 10).then((afterEval) => {
+        setEvalResult(afterEval);
+        const details = computeMoveDetails(afterEval, lastEvalRef.current, actualPlayerColor);
+        lastEvalRef.current = afterEval.numericScore;
+        setHistory((prev) => {
+          if (nextIndex >= prev.length) return prev;
+          const copy = [...prev];
+          copy[nextIndex] = {
+            ...copy[nextIndex],
+            eval: afterEval,
+            ...details,
+          };
+          return copy;
+        });
+      }).catch(() => {});
+    }
 
     // Commit move sound & game over check
     if (chess.isGameOver()) {
@@ -627,22 +706,44 @@ export function useChessGame() {
       const nextIndex = currentMoveIndex + 1;
       const newFen = chess.fen();
       setFen(newFen);
+
+      const confirmedItem: MoveHistoryItem = {
+        san: moveRes.san,
+        fen: newFen,
+        from: blunderState.pendingMove!.orig,
+        to: blunderState.pendingMove!.dest,
+        scoreDisplay: blunderState.deltaScore ? `${blunderState.deltaScore}` : undefined,
+        quality: 'blunder',
+      };
+
       setHistory((prev) => {
         const base = currentMoveIndex >= 0 ? prev.slice(0, currentMoveIndex + 1) : [];
-        return [
-          ...base,
-          {
-            san: moveRes.san,
-            fen: newFen,
-            from: blunderState.pendingMove!.orig,
-            to: blunderState.pendingMove!.dest,
-          },
-        ];
+        return [...base, confirmedItem];
       });
       setCurrentMoveIndex(nextIndex);
       setCoachMessage(null);
       setTacticalSteps([]);
       setSelectedStepIndex(null);
+
+      // Calculer l'évaluation exacte post-gaffe pour mettre à jour la barre et l'item
+      if (typeof window !== 'undefined' && window.chessAPI?.evaluatePosition) {
+        window.chessAPI.evaluatePosition(newFen, 10).then((res) => {
+          setEvalResult(res);
+          const details = computeMoveDetails(res, lastEvalRef.current, actualPlayerColor);
+          lastEvalRef.current = res.numericScore;
+          setHistory((prev) => {
+            if (nextIndex >= prev.length) return prev;
+            const copy = [...prev];
+            copy[nextIndex] = {
+              ...copy[nextIndex],
+              eval: res,
+              ...details,
+              quality: 'blunder',
+            };
+            return copy;
+          });
+        }).catch(() => {});
+      }
 
       setBlunderState({
         isOpen: false,
@@ -665,9 +766,9 @@ export function useChessGame() {
         botTimeoutRef.current = setTimeout(() => triggerBotMove(), 250);
       }
     }
-  }, [blunderState, chess, currentMoveIndex, triggerBotMove, playVictory]);
+  }, [blunderState, chess, currentMoveIndex, actualPlayerColor, triggerBotMove, playVictory]);
 
-  // Undo Move
+  // Undo Move avec synchronisation du score
   const handleUndo = useCallback(() => {
     if (history.length === 0 || blunderState.isOpen) return;
 
@@ -677,13 +778,16 @@ export function useChessGame() {
     }
 
     chess.undo();
+    let newHistory: MoveHistoryItem[] = [];
     if (chess.turn() !== (actualPlayerColor === 'white' ? 'w' : 'b') && history.length > 1) {
       chess.undo();
-      setHistory((prev) => prev.slice(0, -2));
-      setCurrentMoveIndex((prev) => Math.max(-1, prev - 2));
+      newHistory = history.slice(0, -2);
+      setHistory(newHistory);
+      setCurrentMoveIndex(Math.max(-1, newHistory.length - 1));
     } else {
-      setHistory((prev) => prev.slice(0, -1));
-      setCurrentMoveIndex((prev) => Math.max(-1, prev - 1));
+      newHistory = history.slice(0, -1);
+      setHistory(newHistory);
+      setCurrentMoveIndex(Math.max(-1, newHistory.length - 1));
     }
 
     setFen(chess.fen());
@@ -691,13 +795,41 @@ export function useChessGame() {
     setCoachMessage(null);
     setTacticalSteps([]);
     setSelectedStepIndex(null);
-  }, [chess, history.length, actualPlayerColor, blunderState.isOpen]);
 
-  // Jump to specific past move in history
+    // Restaurer l'évaluation du coup actif précédent ou position initiale
+    if (newHistory.length > 0) {
+      const lastItem = newHistory[newHistory.length - 1];
+      if (lastItem.eval) {
+        setEvalResult(lastItem.eval);
+        lastEvalRef.current = lastItem.eval.numericScore;
+      }
+    } else {
+      const initialEval: EvalResult = {
+        score: '+0.2',
+        numericScore: 0.2,
+        bestMove: '',
+        refutationLineUci: '',
+        depth: 10,
+      };
+      setEvalResult(initialEval);
+      lastEvalRef.current = 0.2;
+    }
+  }, [chess, history, actualPlayerColor, blunderState.isOpen]);
+
+  // Jump to specific past move in history avec mise à jour en direct de la barre et du score
   const jumpToMove = useCallback((index: number) => {
     setCoachMessage(null);
     setTacticalSteps([]);
     setSelectedStepIndex(null);
+
+    const initialEval: EvalResult = {
+      score: '+0.2',
+      numericScore: 0.2,
+      bestMove: '',
+      refutationLineUci: '',
+      depth: 10,
+    };
+
     if (index === -1) {
       if (startingFen && startingFen !== DEFAULT_STARTING_FEN) {
         chess.load(startingFen);
@@ -706,11 +838,44 @@ export function useChessGame() {
       }
       setFen(chess.fen());
       setCurrentMoveIndex(-1);
+      setEvalResult(initialEval);
+      lastEvalRef.current = 0.2;
     } else if (index >= 0 && index < history.length) {
-      const targetFen = history[index].fen;
+      const targetItem = history[index];
+      const targetFen = targetItem.fen;
       chess.load(targetFen);
       setFen(targetFen);
       setCurrentMoveIndex(index);
+
+      // Si l'évaluation est en mémoire dans l'historique : mise à jour instantanée en live !
+      if (targetItem.eval) {
+        setEvalResult(targetItem.eval);
+        lastEvalRef.current = targetItem.eval.numericScore;
+      } else {
+        // Sinon, évaluer en direct la position et mettre à jour le cache
+        if (typeof window !== 'undefined' && window.chessAPI?.evaluatePosition) {
+          window.chessAPI.evaluatePosition(targetFen, 10).then((res) => {
+            setEvalResult(res);
+            lastEvalRef.current = res.numericScore;
+            const moveColor = (index % 2 === 0) ? 'white' : 'black';
+            const prevScore = index > 0 && history[index - 1]?.numericScore !== undefined
+              ? history[index - 1].numericScore!
+              : 0.2;
+            const details = computeMoveDetails(res, prevScore, moveColor);
+
+            setHistory((prev) => {
+              if (index >= prev.length) return prev;
+              const copy = [...prev];
+              copy[index] = {
+                ...copy[index],
+                eval: res,
+                ...details,
+              };
+              return copy;
+            });
+          }).catch(() => {});
+        }
+      }
     }
   }, [chess, history, startingFen]);
 
@@ -789,12 +954,9 @@ export function useChessGame() {
   const getPgn = useCallback((): string => {
     const today = new Date().toISOString().slice(0, 10).replace(/-/g, '.');
     const playerIsWhite = actualPlayerColor === 'white';
-    const isLinux = typeof window !== 'undefined' && window.chessAPI?.platform === 'linux';
     const botDisplayName =
       botLevel === 'stockfish'
         ? 'Stockfish 19 (Maître)'
-        : isLinux
-        ? `Stockfish (${botLevel})`
         : `Maia (${botLevel})`;
     const whiteName = playerIsWhite ? 'Joueur' : botDisplayName;
     const blackName = playerIsWhite ? botDisplayName : 'Joueur';
@@ -1016,9 +1178,10 @@ export function useChessGame() {
           const header = chess.header();
           const pgnFen = header['SetUp'] === '1' && header['FEN'] ? header['FEN'] : DEFAULT_STARTING_FEN;
           setStartingFen(pgnFen);
-          setFen(chess.fen());
+          const currentFen = chess.fen();
+          setFen(currentFen);
           const moves = chess.history({ verbose: true });
-          const newHist = moves.map((m) => ({
+          const newHist: MoveHistoryItem[] = moves.map((m) => ({
             san: m.san,
             fen: m.after,
             from: m.from as Key,
