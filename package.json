@@ -1,6 +1,6 @@
 {
   "name": "mon-coach-echecs",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Application Desktop d'Entraînement aux Échecs Assistée par IA Locale",
   "main": "dist-electron/main/index.js",
   "scripts": {
@@ -10,7 +10,8 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "setup:engines": "node scripts/setup-engines.mjs",
-    "package:win": "tsc && vite build && electron-builder --win zip",
+    "setup:python-win": "node scripts/setup-python-win.mjs",
+    "package:win": "tsc && vite build && electron-builder --win nsis zip",
     "package:win:installer": "tsc && vite build && electron-builder --win nsis",
     "package:win:zip": "tsc && vite build && electron-builder --win zip",
     "package:win:dir": "tsc && vite build && electron-builder --win --dir",

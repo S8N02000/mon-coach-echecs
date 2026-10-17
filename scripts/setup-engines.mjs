@@ -53,11 +53,29 @@ const MAIA_WEIGHTS = [
   { name: 'maia-1500.pb.gz', url: 'https://github.com/CSSLab/maia-chess/releases/download/v1.0/maia-1500.pb.gz' }
 ];
 
+const MODELS_DIR = path.join(ROOT_DIR, 'resources', 'models');
+fs.mkdirSync(MODELS_DIR, { recursive: true });
+
+const MAIA3_MODELS = [
+  { name: 'maia3-5m.pt', url: 'https://huggingface.co/UofTCSSLab/Maia3-5M/resolve/main/maia3-5m.pt' }
+];
+
 async function main() {
   console.log('=== Configuration des Moteurs d\'Échecs et Réseaux Maia ===');
-  console.log(`Dossier cible : ${BIN_DIR}`);
+  console.log(`Dossier cible binaires : ${BIN_DIR}`);
+  console.log(`Dossier cible modèles  : ${MODELS_DIR}`);
 
-  // 1. Download Maia weights
+  // 1. Download Maia 3 default model (5m)
+  for (const m of MAIA3_MODELS) {
+    const dest = path.join(MODELS_DIR, m.name);
+    try {
+      await downloadFile(m.url, dest);
+    } catch (e) {
+      console.warn(`Attention: Impossible de télécharger ${m.name}:`, e.message);
+    }
+  }
+
+  // 2. Download legacy Lc0 Maia weights if needed for fallback
   for (const w of MAIA_WEIGHTS) {
     const dest = path.join(WEIGHTS_DIR, w.name);
     try {

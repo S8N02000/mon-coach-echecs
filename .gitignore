@@ -16,3 +16,14 @@ Thumbs.db
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# Environnements Python locaux
+resources/maia3_env/
+resources/bin/python_win/
+.venv/
+__pycache__/
+
+# Modèles volumineux
+resources/models/*.pt
+!resources/models/maia3-5m.pt
+

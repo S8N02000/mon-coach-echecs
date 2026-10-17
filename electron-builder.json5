@@ -14,31 +14,52 @@
     {
       "from": "resources/bin",
       "to": "bin",
-      "filter": ["**/*"]
+      "filter": ["!python_win/**", "!maia3-uci.cmd"]
     },
     {
       "from": "resources",
       "to": "resources",
       "filter": ["icon.png", "icon.ico", "logo-full.png"]
+    },
+    {
+      "from": "resources/models",
+      "to": "models",
+      "filter": ["**/*"]
     }
   ],
   "win": {
     "icon": "build/icon.ico",
     "signAndEditExecutable": false,
+    "extraResources": [
+      {
+        "from": "resources/bin/python_win",
+        "to": "bin/python_win",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "resources/bin/maia3-uci.cmd",
+        "to": "bin/maia3-uci.cmd"
+      }
+    ],
     "target": [
       {
         "target": "nsis",
         "arch": ["x64"]
+      },
+      {
+        "target": "zip",
+        "arch": ["x64"]
       }
     ],
-    "artifactName": "Setup-MonCoachEchecs.${ext}"
+    "artifactName": "MonCoachEchecs-Portable.${ext}"
   },
   "nsis": {
     "oneClick": false,
     "allowToChangeInstallationDirectory": true,
     "createDesktopShortcut": true,
     "createStartMenuShortcut": true,
-    "shortcutName": "Mon Coach Échecs"
+    "shortcutName": "Mon Coach Échecs",
+    "artifactName": "Setup-MonCoachEchecs.exe"
   },
   "linux": {
     "icon": "build/icons",

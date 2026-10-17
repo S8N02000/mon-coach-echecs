@@ -122,19 +122,23 @@ Connecté au serveur local [Ollama](https://ollama.com) (DeepSeek-R1, Qwen2.5, M
 
 ---
 
-### 5. 🤖 Niveaux d'Adversaires Équilibrés
+### 5. 🤖 Niveaux d'Adversaires & Moteurs Neuronaux Maia 3 (Transformer)
 
-* **Maia 1100 (Débutant)** : Fautes typiques des joueurs débutants (erreurs de vision immédiate, pièces en prise).
-* **Maia 1300 (Amateur)** : Joue les tactiques simples, commet des imprécisions stratégiques.
-* **Maia 1500 (Intermédiaire)** : Solide tactiquement, erreurs positionnelles en milieu et fin de partie.
-* **Stockfish Maître** : Moteur tactique débridé calculant avec une précision absolue.
+L'application intègre la toute dernière génération de modèles **Maia 3 (Chessformer)** développés par le CSSLab de l'Université de Toronto, capables de simuler le comportement humain authentique à tous les niveaux :
+
+* ⚡ **Mode Éco & Rapide** (*Maia 3 - 5M, 21 Mo embarqué*) : Ultra-léger, instantané, ne chauffe pas votre processeur. Parfait pour tous les ordinateurs portables et machines bureautiques.
+* ⚖️ **Mode Équilibré** (*Maia 3 - 23M, 92 Mo*) : Le juste milieu idéal entre profondeur d'anticipation et réactivité. Recommandé pour la majorité des PC récents.
+* 🧠 **Mode Grand Maître Réaliste** (*Maia 3 - 79M, 316 Mo*) : Simulation humaine maximale, reproduisant fidèlement les plans et la créativité des maîtres. Recommandé avec carte graphique dédiée NVIDIA/AMD.
+* 🏆 **Stockfish 19 (Maître Absolu)** : Le monstre tactique mondial débridé pour ceux qui veulent affronter un calcul froid sans aucune concession.
+
+> 💡 **Zéro Configuration & Détection Intelligente** : Le modèle ⚡ Éco est inclus directement dans l'application. Dès l'ouverture, Mon Coach Échecs détecte votre matériel (GPU, VRAM) et vous indique le modèle optimal. Le passage d'un profil à l'autre se fait en 1 clic avec téléchargement automatique transparent.
 
 ---
 
 ### 6. 💾 Auto-Save & Persistance Locale Complète
 
 * **Reprise Instantanée** : Fermez l'application ou éteignez votre PC en plein milieu d'une partie de 40 coups ; à la réouverture, **votre partie et vos coups sont exactement là où vous vous étiez arrêté**.
-* **Sauvegarde des Préférences** : Vos réglages (niveau de bot, bouclier anti-gaffe, son, modèle Ollama, couleur) sont mémorisés de façon permanente dans le stockage local sécurisé de Chromium (LevelDB).
+* **Sauvegarde des Préférences** : Vos réglages (niveau de bot, profil Maia 3, bouclier anti-gaffe, son, modèle Ollama, couleur) sont mémorisés de façon permanente dans le stockage local sécurisé de Chromium (LevelDB).
 * **Bouton « Refaire à 0 »** : Réinitialise proprement le plateau et efface la session sauvegardée pour une nouvelle partie.
 
 ---
@@ -153,8 +157,7 @@ Connecté au serveur local [Ollama](https://ollama.com) (DeepSeek-R1, Qwen2.5, M
   * Clic boisé pour les déplacements ordinaires.
   * Son d'impact sec pour les captures.
   * Tonalité d'alerte pour les échecs au Roi.
-  * Carillon mélodieux lors des conseils du coach.
-  * Sonorité d'avertissement en cas de gaffe.
+  * Double note feutrée marimba / bulle d'eau pour les conseils et alertes anti-gaffe.
 * Fonctionne instantanément sans nécessiter de fichiers `.mp3` externes et sans latence.
 
 ---
@@ -171,6 +174,7 @@ Connecté au serveur local [Ollama](https://ollama.com) (DeepSeek-R1, Qwen2.5, M
 │  │  • Tailwind CSS (Thème sombre optimisé pour les yeux)            │  │
 │  │  • Machine d'état useChessGame & useProgressiveCoach             │  │
 │  │  • Ghost Board (Simulation virtuelle pas-à-pas)                  │  │
+│  │  • Profils Maia 3 (⚡ Éco, ⚖️ Équilibré, 🧠 Grand Maître)          │  │
 │  │  • Persistance locale (LocalStorage synchrone zéro layout-shift) │  │
 │  │  • Synthétiseur audio Web Audio API (zéro fichier externe)       │  │
 │  └─────────────────────────────────┬────────────────────────────────┘  │
@@ -178,21 +182,23 @@ Connecté au serveur local [Ollama](https://ollama.com) (DeepSeek-R1, Qwen2.5, M
 │  ┌─────────────────────────────────▼────────────────────────────────┐  │
 │  │                     PROCESSUS PRINCIPAL (NODE.JS)                │  │
 │  │  • Double instance Stockfish (Stockfish-Analysis & Bot)          │  │
-│  │  • Service Maia / Lc0 avec gestion des timeouts & auto-restart   │  │
+│  │  • Service Maia 3 Chessformer (UCI via PyTorch / CUDA / CPU)     │  │
+│  │  • Téléchargement & gestion des checkpoints neuronaux (5M/23M/79M)│  │
 │  │  • Client HTTP local vers Ollama (127.0.0.1:11434)               │  │
 │  │  • Détection matérielle GPU & VRAM via nvidia-smi                │  │
 │  │  • Nettoyage des processus zombies à la fermeture de l'app       │  │
 │  └──────────────┬───────────────────────────────┬───────────────────┘  │
 └─────────────────┼───────────────────────────────┼──────────────────────┘
-                  │ Processus natifs (CPU)        │ HTTP local (11434)
+                  │ Processus natifs UCI          │ HTTP local (11434)
                   ▼                               ▼
        ┌──────────────────────┐        ┌──────────────────────┐
        │   MOTEURS D'ÉCHECS   │        │     OLLAMA LOCAL     │
        │                      │        │                      │
        │ • Stockfish 19       │        │ • DeepSeek-R1 (14B)  │
-       │ • Maia Chess (Lc0)   │        │ • Qwen 2.5 / Mistral │
-       │   Calcul CPU x64     │        │   Inférence GPU VRAM │
-       └──────────────────────┘        └──────────────────────┘
+       │ • Maia 3 Transformer │        │ • Qwen 2.5 / Mistral │
+       │   (5M / 23M / 79M)   │        │   Inférence GPU VRAM │
+       │   GPU CUDA ou CPU    │        └──────────────────────┘
+       └──────────────────────┘
 ```
 
 ---
@@ -204,7 +210,8 @@ Connecté au serveur local [Ollama](https://ollama.com) (DeepSeek-R1, Qwen2.5, M
 | **Système d'exploitation** | Windows 10/11 (64 bits), Linux (Ubuntu 20.04+), macOS | Windows 11 ou Linux x64 |
 | **Processeur (CPU)** | 4 cœurs (Intel Core i5 / AMD Ryzen 5) | 6 cœurs ou plus |
 | **Mémoire Vive (RAM)** | 8 Go | 16 Go |
-| **Carte Graphique (GPU)** | GPU intégré (pour le mode sans LLM) | GPU NVIDIA avec 8 à 16 Go de VRAM |
+| **Carte Graphique (GPU)** | GPU intégré (Maia 3 5M tourne parfaitement sur CPU) | GPU NVIDIA avec 4 à 8 Go+ de VRAM (Maia 3 79M & Ollama) |
+| **Moteurs d'échecs** | **Zéro installation externe** : Stockfish 19 et Maia 3 (5M) sont déjà pré-embarqués | Téléchargement 1 clic des modèles 23M ou 79M directement dans l'app |
 | **Ollama (Optionnel)** | Sans LLM : Stockfish & Maia fonctionnent 100% seuls | Ollama installé avec `deepseek-r1:8b` ou `14b` |
 
 ---
@@ -215,9 +222,9 @@ Les versions pré-compilées prêtes à l'emploi sont disponibles dans l'onglet 
 
 * 🪟 **Windows 10 / 11** :
   * **Installateur automatique** : `Setup-MonCoachEchecs.exe` (NSIS, raccourcis Bureau et Menu Démarrer)
-  * **Version portable** : `Setup-MonCoachEchecs.zip` (dézippez et jouez sans installation)
+  * **Version portable** : `MonCoachEchecs-Portable.zip` (dézippez et jouez sans installation)
 * 🐧 **Linux** :
-  * **AppImage autonome** : `Mon Coach Échecs-1.0.0.AppImage` (`chmod +x` et double-clic)
+  * **AppImage autonome** : `Mon Coach Échecs-1.1.0.AppImage` (`chmod +x` et double-clic)
   * **Dossier dépaqueté** : `release/linux-unpacked/`
 
 ---
@@ -235,11 +242,11 @@ cd mon-coach-echecs
 npm install
 ```
 
-### 3. Télécharger les Moteurs d'Échecs et Poids Maia
+### 3. Télécharger les Moteurs d'Échecs et le Modèle Maia 3
 ```bash
 npm run setup:engines
 ```
-*Ce script télécharge et configure automatiquement Stockfish 19, Leela Chess Zero (`lc0`), et les réseaux de neurones humains `maia-1100`, `maia-1300`, `maia-1500` dans le dossier `resources/bin/`.*
+*Ce script configure automatiquement Stockfish 19 et télécharge le modèle neural embarqué **Maia 3 - 5M** (`maia3-5m.pt`, 21 Mo) dans `resources/models/`. Les modèles plus avancés (23M et 79M) peuvent être téléchargés directement en 1 clic dans l'interface de l'application.*
 
 ### 4. (Optionnel) Installer et Démarrer Ollama pour le Coach IA
 Pour profiter des explications en français du Coach IA :
@@ -357,11 +364,11 @@ mon-coach-echecs/
 ├── resources/
 │   ├── icon.png                # Icône officielle de l'application
 │   ├── logo-full.png           # Bannière et logo haute résolution
-│   └── bin/                    # Binaires embarqués (Stockfish, Lc0, Maia)
-│       ├── stockfish           # Moteur Linux x64
-│       ├── stockfish.exe       # Moteur Windows x64
-│       ├── lc0.exe             # Moteur Leela Chess Zero Windows
-│       └── weights/            # Poids neuronaux Maia 1100, 1300, 1500
+│   ├── models/                 # Modèles de réseaux de neurones Maia 3 (PyTorch)
+│   │   └── maia3-5m.pt         # Modèle ⚡ Éco & Rapide (pré-embarqué, 21 Mo)
+│   └── bin/                    # Binaires moteurs d'analyse
+│       ├── stockfish           # Moteur Stockfish 19 Linux x64
+│       └── stockfish.exe       # Moteur Stockfish 19 Windows x64
 │
 ├── src/
 │   ├── main/                   # Processus Principal Node.js
@@ -408,7 +415,7 @@ Cliquez simplement sur le bouton <b>« Anti-Gaffe : ON »</b> situé dans le pan
 
 <details>
 <summary><b>4. Les moteurs continuent-ils de tourner en arrière-plan après la fermeture ?</b></summary>
-<b>Non.</b> L'application écoute l'événement <code>before-quit</code> d'Electron et stoppe immédiatement tous les sous-processus <code>stockfish</code> et <code>lc0</code>. 100 % de votre RAM et de votre VRAM sont libérées instantanément.
+<b>Non.</b> L'application écoute l'événement <code>before-quit</code> d'Electron et stoppe immédiatement tous les sous-processus <code>stockfish</code> et <code>maia3-uci</code>. 100 % de votre RAM et de votre VRAM sont libérées instantanément.
 </details>
 
 ---
